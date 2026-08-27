@@ -270,7 +270,7 @@ func validBootstrap() garmParams.BootstrapInstance {
 	downloadURL := provider.RunnerToolURL
 	checksum := provider.RunnerToolSHA256
 	return garmParams.BootstrapInstance{
-		Name: "runner-123",
+		Name:             "runner-123",
 		Tools: []garmParams.RunnerApplicationDownload{{
 			OS:             &osName,
 			Architecture:   &arch,
