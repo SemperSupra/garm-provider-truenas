@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"github.com/SemperSupra/garm-provider-truenas/internal/provider"
@@ -78,16 +79,80 @@ func TestCreateGetListContractWithMockBackend(t *testing.T) {
 	}
 }
 
-func TestLiveModeFailsClosed(t *testing.T) {
+func TestTrueNASModeRequiresRuntimeAPIKeyBeforeNetwork(t *testing.T) {
 	tmp := t.TempDir()
 	cfgPath := filepath.Join(tmp, "provider.json")
-	if err := os.WriteFile(cfgPath, []byte("{\"mode\":\"live\",\"state_file\":\"unused\"}"), 0o600); err != nil {
+	cfg := config{
+		Mode: "truenas",
+		TrueNAS: &trueNASConfig{
+			Host:      "truenas.example.invalid",
+			Username:  "automation",
+			APIKeyEnv: "TEST_TRUENAS_API_KEY",
+		},
+	}
+	data, _ := json.Marshal(cfg)
+	if err := os.WriteFile(cfgPath, data, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("TEST_TRUENAS_API_KEY", "")
+	t.Setenv("GARM_PROVIDER_CONFIG_FILE", cfgPath)
+	t.Setenv("GARM_CONTROLLER_ID", "controller-123")
+	t.Setenv("GARM_COMMAND", "ListInstances")
+
+	err := run(context.Background(), bytes.NewReader(nil), &bytes.Buffer{}, &bytes.Buffer{})
+	if err == nil || !strings.Contains(err.Error(), "TEST_TRUENAS_API_KEY") {
+		t.Fatalf("missing runtime API key should fail before network, got %v", err)
+	}
+}
+
+func TestTrueNASModeRejectsInsecureTLSBeforeNetwork(t *testing.T) {
+	tmp := t.TempDir()
+	cfgPath := filepath.Join(tmp, "provider.json")
+	cfg := config{
+		Mode: "truenas",
+		TrueNAS: &trueNASConfig{
+			Host:               "truenas.example.invalid",
+			Username:           "automation",
+			APIKeyEnv:          "TEST_TRUENAS_API_KEY",
+			InsecureSkipVerify: true,
+		},
+	}
+	data, _ := json.Marshal(cfg)
+	if err := os.WriteFile(cfgPath, data, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("TEST_TRUENAS_API_KEY", "test-only-key")
+	t.Setenv("GARM_PROVIDER_CONFIG_FILE", cfgPath)
+	t.Setenv("GARM_CONTROLLER_ID", "controller-123")
+	t.Setenv("GARM_COMMAND", "ListInstances")
+
+	err := run(context.Background(), bytes.NewReader(nil), &bytes.Buffer{}, &bytes.Buffer{})
+	if err == nil || !strings.Contains(err.Error(), "insecure TLS") {
+		t.Fatalf("insecure TLS should fail before network, got %v", err)
+	}
+}
+
+func TestUnknownModeFailsClosed(t *testing.T) {
+	tmp := t.TempDir()
+	cfgPath := filepath.Join(tmp, "provider.json")
+	if err := os.WriteFile(cfgPath, []byte("{\"mode\":\"live\"}"), 0o600); err != nil {
 		t.Fatal(err)
 	}
 	t.Setenv("GARM_PROVIDER_CONFIG_FILE", cfgPath)
 	t.Setenv("GARM_CONTROLLER_ID", "controller-123")
 	t.Setenv("GARM_COMMAND", "ListInstances")
 	if err := run(context.Background(), bytes.NewReader(nil), &bytes.Buffer{}, &bytes.Buffer{}); err == nil {
-		t.Fatal("live mode unexpectedly succeeded")
+		t.Fatal("unknown mode unexpectedly succeeded")
+	}
+}
+
+func TestConfigRejectsUnknownFields(t *testing.T) {
+	tmp := t.TempDir()
+	cfgPath := filepath.Join(tmp, "provider.json")
+	if err := os.WriteFile(cfgPath, []byte("{\"mode\":\"mock\",\"state_file\":\"state.json\",\"surprise\":true}"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := loadConfig(cfgPath); err == nil {
+		t.Fatal("unknown provider config field unexpectedly accepted")
 	}
 }
