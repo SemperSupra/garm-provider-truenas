@@ -115,10 +115,6 @@ func (p *externalProvider) CreateInstance(ctx context.Context, bootstrap garmPar
 		defer func() { _ = closeBackend() }()
 	}
 
-	// In JIT mode, GARM has already used RepoURL, labels, runner group and the
-	// selected runner tool metadata when it produces the credentials exposed by
-	// MetadataURL. The TrueNAS transport only needs the authenticated callback and
-	// metadata channel plus the fixed image/profile validated above.
 	instance, err := manager.Create(ctx, provider.Bootstrap{
 		Name:        bootstrap.Name,
 		OSType:      string(bootstrap.OSType),
@@ -192,9 +188,6 @@ func (p *externalProvider) RemoveAllInstances(ctx context.Context) error {
 }
 
 func (p *externalProvider) Stop(ctx context.Context, instance string, force bool) error {
-	// The fixed ephemeral profile does not expose a general-purpose stop
-	// operation. provider.Manager enforces that active workloads are not stopped
-	// or retired through this path, regardless of GARM's force hint.
 	_ = force
 	manager, closeBackend, err := p.manager(ctx)
 	if err != nil {
@@ -237,9 +230,6 @@ func (p *externalProvider) ValidatePoolInfo(_ context.Context, image, flavor, pr
 		return err
 	}
 
-	// The pinned v0.1.1 dispatcher currently does not populate image/flavor for
-	// ValidatePoolInfo. Validate them whenever the dispatcher supplies them, and
-	// enforce the same fixed values again during CreateInstance.
 	if strings.TrimSpace(image) != "" && image != provider.RunnerImage {
 		return badRequest(fmt.Errorf("image %q is not the fixed TrueNAS runner image", image))
 	}
@@ -272,6 +262,9 @@ func validateBootstrapContract(bootstrap garmParams.BootstrapInstance) error {
 	}
 	if bootstrap.Image != provider.RunnerImage {
 		return fmt.Errorf("image %q is not the fixed TrueNAS runner image", bootstrap.Image)
+	}
+	if err := validateRunnerToolContract(bootstrap); err != nil {
+		return err
 	}
 	if !bootstrap.JitConfigEnabled {
 		return errors.New("JIT runner configuration is required for the ephemeral TrueNAS profile")
