@@ -1,0 +1,170 @@
+name: Package exact provider candidate
+
+on:
+  pull_request:
+    paths:
+      - '.github/workflows/package-exact-provider.yml'
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/package-exact-provider.yml'
+  workflow_dispatch:
+    inputs:
+      provider_sha:
+        description: 'Full public SemperSupra/garm-provider-truenas commit SHA to package'
+        required: false
+        default: '27d1e51296c8557026f06080b7fa68bd80c987f2'
+
+permissions:
+  contents: read
+
+concurrency:
+  group: package-provider-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  package:
+    name: Exact Linux amd64 provider package
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    env:
+      DEFAULT_PROVIDER_SHA: 27d1e51296c8557026f06080b7fa68bd80c987f2
+      REQUESTED_PROVIDER_SHA: ${{ github.event.inputs.provider_sha }}
+
+    steps:
+      - name: Resolve exact provider source
+        id: candidate
+        shell: bash
+        run: |
+          set -euo pipefail
+          sha="${REQUESTED_PROVIDER_SHA:-$DEFAULT_PROVIDER_SHA}"
+          [[ "$sha" =~ ^[0-9a-f]{40}$ ]] || {
+            echo 'provider_sha must be a full lowercase 40-character Git commit SHA.'
+            exit 1
+          }
+
+          git init --quiet candidate
+          git -C candidate remote add origin https://github.com/SemperSupra/garm-provider-truenas.git
+          git -C candidate fetch --quiet --depth=1 origin "$sha"
+          git -C candidate checkout --quiet --detach FETCH_HEAD
+          actual="$(git -C candidate rev-parse HEAD)"
+          test "$actual" = "$sha"
+
+          echo "sha=$sha" >> "$GITHUB_OUTPUT"
+          echo "source_repository=SemperSupra/garm-provider-truenas" >> "$GITHUB_OUTPUT"
+
+      - name: Set up Go from exact candidate
+        uses: actions/setup-go@924ae3a1cded613372ab5595356fb5720e22ba16 # v6
+        with:
+          go-version-file: candidate/go.mod
+          cache-dependency-path: candidate/go.sum
+
+      - name: Verify candidate module and source hygiene
+        working-directory: candidate
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(go env GOOS)" = linux
+          test "$(go env GOARCH)" = amd64
+
+          unformatted="$(gofmt -l .)"
+          if [ -n "$unformatted" ]; then
+            printf 'Unformatted Go files:\n%s\n' "$unformatted"
+            exit 1
+          fi
+
+          go mod download
+          go mod verify
+          cp go.mod ../go.mod.before
+          cp go.sum ../go.sum.before
+          go mod tidy
+          cmp -s go.mod ../go.mod.before
+          cmp -s go.sum ../go.sum.before
+          go vet ./...
+          go test ./...
+
+      - name: Build exact provider executable and evidence
+        shell: bash
+        env:
+          PROVIDER_SHA: ${{ steps.candidate.outputs.sha }}
+        run: |
+          set -euo pipefail
+          mkdir -p dist
+          (
+            cd candidate
+            go build -o ../dist/garm-provider-truenas ./cmd/garm-provider-truenas
+          )
+          chmod 0755 dist/garm-provider-truenas
+          sha256sum dist/garm-provider-truenas > dist/garm-provider-truenas.sha256
+
+          python3 - "$PROVIDER_SHA" "$GITHUB_REPOSITORY" "$GITHUB_SHA" <<'PY' > dist/manifest.json
+          import hashlib
+          import json
+          import pathlib
+          import subprocess
+          import sys
+
+          provider_sha, workflow_repository, workflow_sha = sys.argv[1:]
+          binary = pathlib.Path('dist/garm-provider-truenas')
+          digest = hashlib.sha256(binary.read_bytes()).hexdigest()
+          manifest = {
+              'schema_version': 1,
+              'source_repository': 'SemperSupra/garm-provider-truenas',
+              'source_commit': provider_sha,
+              'workflow_repository': workflow_repository,
+              'workflow_commit': workflow_sha,
+              'target': {'goos': 'linux', 'goarch': 'amd64'},
+              'binary': {
+                  'filename': binary.name,
+                  'sha256': digest,
+              },
+              'go_version': subprocess.check_output(['go', 'version'], text=True).strip(),
+              'trust_claim': 'public GitHub-hosted packaging evidence for the exact public provider source commit',
+              'non_claims': [
+                  'no private promotion approval',
+                  'no live TrueNAS compatibility claim',
+                  'no Stage 5 HIL completion claim',
+              ],
+          }
+          print(json.dumps(manifest, indent=2, sort_keys=True))
+          PY
+
+          test "$(awk '{print $1}' dist/garm-provider-truenas.sha256)" = \
+            "$(python3 -c 'import json; print(json.load(open("dist/manifest.json"))["binary"]["sha256"])')"
+
+      - name: Enforce public packaging boundary
+        shell: bash
+        run: |
+          set -euo pipefail
+          if grep -R -nE '^[[:space:]]*runs-on:[[:space:]].*(self-hosted|truenas-|ubuntu-noble-garm)' .github/workflows 2>/dev/null; then
+            echo 'Public packaging workflows must use GitHub-hosted runners only.'
+            exit 1
+          fi
+          test ! -e dist/provider-config.json
+          test ! -e dist/.env
+          test "$(find dist -maxdepth 1 -type f -printf '%f\n' | sort | tr '\n' ' ')" = \
+            'garm-provider-truenas garm-provider-truenas.sha256 manifest.json '
+
+      - name: Upload exact provider package
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v4
+        with:
+          name: garm-provider-truenas-linux-amd64-${{ steps.candidate.outputs.sha }}
+          path: dist/
+          if-no-files-found: error
+          retention-days: 14
+
+      - name: Record package identity
+        shell: bash
+        env:
+          PROVIDER_SHA: ${{ steps.candidate.outputs.sha }}
+        run: |
+          {
+            echo '### Exact provider package'
+            echo "- source: SemperSupra/garm-provider-truenas@$PROVIDER_SHA"
+            echo '- target: linux/amd64'
+            echo '- runner: ubuntu-24.04 (GitHub-hosted)'
+            echo '- files: provider binary, SHA-256, manifest only'
+            echo '```json'
+            cat dist/manifest.json
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
