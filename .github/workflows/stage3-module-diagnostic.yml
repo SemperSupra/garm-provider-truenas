@@ -24,16 +24,19 @@ jobs:
           go-version-file: go.mod
           check-latest: false
           cache: false
-      - name: Regenerate module lock
+      - name: Compare regenerated module lock
         shell: bash
         run: |
           set -euo pipefail
+          cp go.sum committed.go.sum
           rm -f go.sum
           go mod tidy
           printf '%s\n' '--- SHA256 ---'
-          sha256sum go.mod go.sum
-          printf '%s\n' '--- GO.MOD ---'
-          cat go.mod
-          printf '%s\n' '--- GO.SUM BASE64 ---'
+          sha256sum committed.go.sum go.sum go.mod
+          printf '%s\n' '--- UNIFIED DIFF ---'
+          diff -u committed.go.sum go.sum || true
+          printf '%s\n' '--- BYTE DIFF ---'
+          cmp -l committed.go.sum go.sum || true
+          printf '%s\n' '--- REGENERATED GO.SUM BASE64 ---'
           base64 -w0 go.sum
           printf '\n%s\n' '--- END ---'
