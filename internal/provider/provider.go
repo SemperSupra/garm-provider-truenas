@@ -2,6 +2,8 @@ package provider
 
 import (
 	"context"
+	"crypto/sha256"
+	"encoding/hex"
 	"errors"
 	"fmt"
 	"strings"
@@ -20,6 +22,7 @@ const (
 	RunnerImage        = "ghcr.io/actions/actions-runner:2.336.0@sha256:0cfdcc701ce933c6d243c6b0b2da767366dc9f2e99961d4c3754b0b78084cdda"
 	GeneralCPU         = 4
 	GeneralMemoryBytes = int64(8 * 1024 * 1024 * 1024)
+	TrueNASAppNameMax  = 40
 )
 
 type State string
@@ -95,8 +98,8 @@ func NewManager(client Client, controllerID string) (*Manager, error) {
 	if client == nil {
 		return nil, errors.New("client is required")
 	}
-	if strings.TrimSpace(controllerID) == "" {
-		return nil, errors.New("controller ID is required")
+	if strings.TrimSpace(controllerID) == "" || sanitize(controllerID) == "" {
+		return nil, errors.New("controller ID is required and must contain an alphanumeric character")
 	}
 	return &Manager{client: client, controllerID: controllerID}, nil
 }
@@ -246,8 +249,8 @@ func (m *Manager) verifyOwnership(app App, poolID string) error {
 }
 
 func validateBootstrap(in Bootstrap) error {
-	if strings.TrimSpace(in.Name) == "" || strings.TrimSpace(in.PoolID) == "" {
-		return fmt.Errorf("name and pool ID are required: %w", ErrUnsupported)
+	if strings.TrimSpace(in.Name) == "" || sanitize(in.Name) == "" || strings.TrimSpace(in.PoolID) == "" {
+		return fmt.Errorf("name and pool ID are required and name must contain an alphanumeric character: %w", ErrUnsupported)
 	}
 	if in.OSType != "linux" {
 		return fmt.Errorf("os_type %q: %w", in.OSType, ErrUnsupported)
@@ -270,11 +273,19 @@ func ownedName(controllerID, requested string) string {
 	if len(controller) > 12 {
 		controller = controller[:12]
 	}
-	name := "garm-" + controller + "-" + requested
-	if len(name) > 63 {
-		name = name[:63]
+	raw := strings.Trim("garm-"+controller+"-"+requested, "-")
+	if len(raw) <= TrueNASAppNameMax {
+		return raw
 	}
-	return strings.Trim(name, "-")
+
+	// TrueNAS 25.04 app names are capped at 40 characters. Preserve a readable
+	// prefix and append a stable digest so simple truncation cannot alias two
+	// distinct long GARM runner names.
+	digest := sha256.Sum256([]byte(raw))
+	suffix := hex.EncodeToString(digest[:4])
+	prefixLen := TrueNASAppNameMax - len(suffix) - 1
+	prefix := strings.Trim(raw[:prefixLen], "-")
+	return prefix + "-" + suffix
 }
 
 func sanitize(in string) string {
