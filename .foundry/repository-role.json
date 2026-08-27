@@ -1,0 +1,31 @@
+{
+  "schemaVersion": 1,
+  "repository": "SemperSupra/garm-provider-truenas",
+  "visibility": "public",
+  "role": "sanitized-published-source-and-public-execution",
+  "authoritativePrivateRepository": "SemperSupra/garm-provider-truenas-private",
+  "normalProductDevelopmentAllowed": false,
+  "defaultExecutionClass": "public-hosted",
+  "privateRepositoryReadCredentialsAllowed": false,
+  "privateTrueNASCredentialsAllowed": false,
+  "selfHostedRunnerUseAllowed": false,
+  "airlock": {
+    "mode": "constructive-allowlist",
+    "copyPrivateTreeThenDeleteDenied": true
+  },
+  "publicSafeClasses": [
+    "provider-source",
+    "public-contracts",
+    "ordinary-tests",
+    "mocked-truenas-tests",
+    "public-documentation",
+    "build-release-provenance"
+  ],
+  "privateByDefaultClasses": [
+    "adversarial-corpora",
+    "failure-taxonomies",
+    "private-environment-evidence",
+    "promotion-logic",
+    "private-qualification-results"
+  ]
+}
