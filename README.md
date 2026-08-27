@@ -8,15 +8,19 @@ It is **not** the normal development authority. Authoritative development occurs
 
 ## MVP
 
-The first supported path is intentionally narrow:
+The supported path is intentionally narrow:
 
 - GARM external-provider contract;
 - Linux/x86-64 only;
 - one approved `truenas-linux-general` execution profile;
 - one ephemeral TrueNAS Custom App per job;
+- fixed pinned runtime image and exact checksummed official GitHub runner tool contract;
+- container-native JIT bootstrap with credential bytes isolated on a `noexec` tmpfs;
 - no host Docker socket, host mounts, or privileged mode;
 - provider-side ownership, resource ceilings, idempotency, reconciliation, and safe-retirement checks;
-- public CI on GitHub-hosted runners using a mocked TrueNAS JSON-RPC service;
-- real TrueNAS hardware-in-loop testing only as a later private qualification gate.
+- public CI on GitHub-hosted runners covering formatting, module integrity, vet, race tests, build, mocked GARM/TrueNAS behavior, and a real Docker smoke of the pinned image plus verified runner payload and Node 24;
+- real TrueNAS hardware-in-loop testing remains a private qualification gate before any portfolio pilot.
+
+Public CI proves the generic provider and container/bootstrap contract. It does not claim real TrueNAS networking, App lifecycle timing, GitHub runner registration, target-host cleanup, or scale-set reliability.
 
 Public workflows must not receive credentials that can read private repositories or access a private TrueNAS host.
