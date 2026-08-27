@@ -7,7 +7,8 @@ package truenasstore
 //
 // GARM_INSTANCE_TOKEN is deliberately copied into a non-exported shell
 // variable and removed from the environment before the runner child starts.
-// The credential files live under RUNNER_HOME and are removed on every normal
+// Auth headers are supplied to curl over stdin rather than in argv. The
+// credential files live under RUNNER_HOME and are removed on every normal
 // shell exit. The TrueNAS app itself is one-job ephemeral and is retired by the
 // provider once it is no longer active.
 const containerBootstrapScript = `set -eu
@@ -63,12 +64,13 @@ post_json() {
   payload="$2"
   attempt=1
   while [ "$attempt" -le "$MAX_ATTEMPTS" ]; do
-    if curl --fail --silent --show-error \
+    if printf 'header = "Authorization: Bearer %s"\n' "$bootstrap_token" | \
+      curl --config - \
+      --fail --silent --show-error \
       --connect-timeout 5 --max-time 30 \
       -X POST \
       -H 'Accept: application/json' \
       -H 'Content-Type: application/json' \
-      -H "Authorization: Bearer ${bootstrap_token}" \
       --data "$payload" \
       "$url" >/dev/null; then
       return 0
@@ -95,10 +97,11 @@ fetch_metadata() {
   rm -f "$tmp"
   attempt=1
   while [ "$attempt" -le "$MAX_ATTEMPTS" ]; do
-    if curl --fail --silent --show-error --location \
+    if printf 'header = "Authorization: Bearer %s"\n' "$bootstrap_token" | \
+      curl --config - \
+      --fail --silent --show-error --location \
       --connect-timeout 5 --max-time 30 \
       -H 'Accept: application/json' \
-      -H "Authorization: Bearer ${bootstrap_token}" \
       "${metadata_base}/${path}" \
       -o "$tmp"; then
       if [ -s "$tmp" ]; then
@@ -124,10 +127,14 @@ if [ ! -d "$RUNNER_ASSETS_DIR" ] || [ ! -f "$RUNNER_ASSETS_DIR/run.sh" ]; then
 fi
 
 mkdir -p "$RUNNER_HOME"
-cp -a "$RUNNER_ASSETS_DIR/." "$RUNNER_HOME/"
+# Do not use cp -a here. /runnertmp is root-owned in the official image and the
+# provider deliberately runs as uid 1001 with no-new-privileges, so preserving
+# root ownership would fail. A normal recursive copy creates the ephemeral
+# runner tree as the unprivileged runner user while retaining executable bits.
+cp -R "$RUNNER_ASSETS_DIR/." "$RUNNER_HOME/"
 if [ -d "$RUNNER_HOME/externalstmp" ]; then
   mkdir -p "$RUNNER_HOME/externals"
-  cp -a "$RUNNER_HOME/externalstmp/." "$RUNNER_HOME/externals/"
+  cp -R "$RUNNER_HOME/externalstmp/." "$RUNNER_HOME/externals/"
   rm -rf "$RUNNER_HOME/externalstmp"
 fi
 cd "$RUNNER_HOME"
