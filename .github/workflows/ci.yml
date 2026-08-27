@@ -56,65 +56,62 @@ jobs:
       - name: Build provider executable
         run: go build ./cmd/garm-provider-truenas
 
-      - name: Smoke pinned runner image contract
+      - name: Smoke pinned image and verified runner payload
         shell: bash
         run: |
           set -euo pipefail
-          image="$(sed -n 's/^[[:space:]]*RunnerImage[[:space:]]*=[[:space:]]*"\([^"]*\)".*/\1/p' internal/provider/provider.go)"
-          if [ -z "$image" ]; then
-            echo 'Unable to resolve pinned RunnerImage from provider source.'
+          source_file=internal/provider/provider.go
+          image="$(sed -n 's/^[[:space:]]*RunnerImage[[:space:]]*=[[:space:]]*"\([^"]*\)".*/\1/p' "$source_file")"
+          version="$(sed -n 's/^[[:space:]]*RunnerVersion[[:space:]]*=[[:space:]]*"\([^"]*\)".*/\1/p' "$source_file")"
+          checksum="$(sed -n 's/^[[:space:]]*RunnerToolSHA256[[:space:]]*=[[:space:]]*"\([^"]*\)".*/\1/p' "$source_file")"
+          if [ -z "$image" ] || [ -z "$version" ] || [ -z "$checksum" ]; then
+            echo 'Unable to resolve pinned runner contract from provider source.'
             exit 1
           fi
+          filename="actions-runner-linux-x64-${version}.tar.gz"
+          url="https://github.com/actions/runner/releases/download/v${version}/${filename}"
+
           docker pull "$image"
           docker run --rm \
             --user 1001:1001 \
             --cap-drop ALL \
             --security-opt no-new-privileges:true \
-            --tmpfs /home/runner/actions-runner:rw,nosuid,nodev,uid=1001,gid=1001,mode=0700 \
-            --entrypoint /bin/bash \
+            --tmpfs /run/garm-jit:rw,nosuid,nodev,noexec,uid=1001,gid=1001,mode=0700 \
+            --env GARM_TEST_RUNNER_URL="$url" \
+            --env GARM_TEST_RUNNER_SHA256="$checksum" \
+            --entrypoint /bin/sh \
             "$image" -c '
-              set -euo pipefail
-              echo "== identity =="
-              id
-              echo "== runner assets =="
-              ls -ld /runnertmp || true
-              find /runnertmp -maxdepth 2 -type f \( -name run.sh -o -name Runner.Listener \) -exec stat -c "%u:%g %a %n" {} \; || true
-              echo "== required tools =="
-              command -v curl || true
-              command -v sed || true
-              echo "== tmpfs =="
-              stat -c "%u:%g %a %n" /home/runner/actions-runner
-              mount | grep "/home/runner/actions-runner" || true
+              set -eu
+              test "$(id -u)" = 1001
+              command -v curl >/dev/null
+              command -v sed >/dev/null
+              command -v tar >/dev/null
+              command -v sha256sum >/dev/null
 
-              failures=0
-              check() {
-                description="$1"
-                shift
-                if "$@"; then
-                  echo "PASS: ${description}"
-                else
-                  echo "FAIL: ${description}"
-                  failures=$((failures + 1))
-                fi
-              }
-
-              check "container runs as uid 1001" test "$(id -u)" = 1001
-              check "runner run.sh exists and is executable" test -x /runnertmp/run.sh
-              check "Runner.Listener exists and is executable" test -x /runnertmp/bin/Runner.Listener
-              check "curl is installed" bash -c "command -v curl >/dev/null"
-              check "sed is installed" bash -c "command -v sed >/dev/null"
-              check "runner tmpfs is writable" test -w /home/runner/actions-runner
-
-              if [ "$failures" -ne 0 ]; then
-                echo "Pinned runner image contract failed ${failures} pre-copy assertion(s)."
+              test -w /home/runner
+              test -w /run/garm-jit
+              mount | grep " /run/garm-jit " | grep -q noexec
+              printf "#!/bin/sh\nexit 0\n" > /run/garm-jit/noexec-probe
+              chmod 700 /run/garm-jit/noexec-probe
+              if /run/garm-jit/noexec-probe 2>/dev/null; then
+                echo "Credential tmpfs unexpectedly allows direct execution."
                 exit 1
               fi
 
-              cp -R /runnertmp/. /home/runner/actions-runner/
-              echo "== copied runner tree =="
-              stat -c "%u:%g %a %n" /home/runner/actions-runner/run.sh /home/runner/actions-runner/bin/Runner.Listener
+              archive=/home/runner/stage4-runner.tar.gz
+              rm -rf /home/runner/actions-runner "$archive"
+              curl --fail --silent --show-error --location \
+                --connect-timeout 5 --max-time 180 \
+                "$GARM_TEST_RUNNER_URL" -o "$archive"
+              printf "%s  %s\n" "$GARM_TEST_RUNNER_SHA256" "$archive" | sha256sum -c -
+              mkdir -p /home/runner/actions-runner
+              tar xzf "$archive" -C /home/runner/actions-runner
+              rm -f "$archive"
+
               test -x /home/runner/actions-runner/run.sh
               test -x /home/runner/actions-runner/bin/Runner.Listener
+              test -x /home/runner/actions-runner/externals/node24/bin/node
+              /home/runner/actions-runner/externals/node24/bin/node --version
             '
 
       - name: Enforce public execution boundary
