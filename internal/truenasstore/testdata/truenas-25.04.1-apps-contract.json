@@ -1,0 +1,39 @@
+{
+  "schema_version": 1,
+  "profile_id": "truenas-scale-25.04.1-apps",
+  "foundry_profile": "SemperSupra/truenas-app-foundry:.foundry/truenas-compatibility/25.04.1-apps.json",
+  "middleware": {
+    "repository": "truenas/middleware",
+    "release_ref": "release/25.04.1",
+    "commit": "74ab5a2d373be4097dece257d00e1086376333ba",
+    "source_blobs": {
+      "src/middlewared/middlewared/plugins/apps/crud.py": "f3c4f79201c0d2340a8bc2cfbe4757448a6851ba",
+      "src/middlewared/middlewared/plugins/apps/compose_utils.py": "84029578bedfc89e5495e21107aaf6f75a6d42c1",
+      "src/middlewared/middlewared/plugins/apps/ix_apps/query.py": "bfbd96d2bd5bdd9853f753d485300911588636c1"
+    }
+  },
+  "state_mapping": [
+    {"truenas": "RUNNING", "provider": "RUNNING"},
+    {"truenas": "STOPPED", "provider": "STOPPED"},
+    {"truenas": "CRASHED", "provider": "CRASHED"},
+    {"truenas": "DEPLOYING", "provider": "DEPLOYING"}
+  ],
+  "unknown_state_provider": "DEPLOYING",
+  "active_workload_fields": [
+    "containers",
+    "used_ports",
+    "container_details",
+    "volumes",
+    "images",
+    "networks"
+  ],
+  "compose_action_timeout_seconds": 1200,
+  "delete_contract": {
+    "method": "app.delete",
+    "remove_images": false,
+    "remove_ix_volumes": false,
+    "truenas_compose_down_removes_compose_volumes": true,
+    "ix_volume_datasets_removed_only_when_requested": true
+  },
+  "scope": "source-attributed provider contract fixture; not live TrueNAS qualification"
+}
