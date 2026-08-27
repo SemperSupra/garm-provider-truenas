@@ -8,6 +8,8 @@ It is **not** the normal development authority. Authoritative development occurs
 
 Canonical cross-project terminology is defined in `SemperSupra/truenas-app-foundry/docs/terminology.md`. In provider documentation, **runtime realization** means actual TrueNAS App creation/startup; **materialization** is reserved for the broader Foundry source-rendering → target-lowering pipeline.
 
+`garm-provider-truenas` is an **additive external provider extension** to GARM. The eventual GARM TrueNAS controller package is a general GARM appliance that should preserve upstream providers; this repository owns only the TrueNAS Apps/current, Containers/future, and VMs/future realization backends. GARM Scale Sets, webhook Pools, entity/credential semantics, and GitHub plan policy remain above the provider boundary. See `docs/appliance-boundary.md` and `SemperSupra/truenas-app-foundry/docs/garm-appliance-architecture.md`.
+
 ## MVP
 
 The supported path is intentionally narrow:
