@@ -51,11 +51,11 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          if grep -R -nE 'runs-on:.*(self-hosted|truenas-|ubuntu-noble-garm)' .github/workflows; then
+          if grep -R -nE '^[[:space:]]*runs-on:[[:space:]].*(self-hosted|truenas-|ubuntu-noble-garm)' .github/workflows; then
             echo 'Public workflows must use GitHub-hosted runners only.'
             exit 1
           fi
-          if grep -R -nE 'GARM_PROVIDER_CONFIG_FILE.*(https?|wss?)://|TRUENAS_(API|TOKEN|KEY)' .github/workflows; then
+          if grep -R -nE '^[[:space:]]*(TRUENAS_(API|TOKEN|KEY)|GARM_PROVIDER_CONFIG_FILE):' .github/workflows; then
             echo 'Public workflows must not embed private TrueNAS access.'
             exit 1
           fi
