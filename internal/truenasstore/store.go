@@ -203,14 +203,23 @@ func composeConfig(spec provider.AppSpec) (string, error) {
 				"image":   spec.Image,
 				"user":    spec.RunAsUser,
 				"restart": "no",
+				"command": containerBootstrapCommand(),
 				"cap_drop": []string{
 					"ALL",
 				},
 				"security_opt": []string{"no-new-privileges:true"},
 				"cpus":         spec.CPU,
 				"mem_limit":    spec.MemoryBytes,
-				"tmpfs":        []string{"/home/runner/_work:rw,noexec,nosuid"},
-				"labels":       labels,
+				// The runner executable tree and its JIT credential files are
+				// volatile. Unlike the earlier work-only tmpfs, this also ensures
+				// an unclean container stop cannot leave the credential files in
+				// the container writable layer. The work area remains executable
+				// because GitHub Actions workloads legitimately execute files there.
+				"tmpfs": []string{
+					"/home/runner/actions-runner:rw,nosuid,nodev,uid=1001,gid=1001,mode=0700",
+					"/home/runner/_work:rw,nosuid,nodev,uid=1001,gid=1001,mode=0700",
+				},
+				"labels": labels,
 				"environment": map[string]string{
 					"GARM_CALLBACK_URL":   spec.CallbackURL,
 					"GARM_METADATA_URL":   spec.MetadataURL,
