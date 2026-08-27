@@ -177,8 +177,11 @@ func composeConfig(spec provider.AppSpec) (string, error) {
 	if spec.CPU != provider.GeneralCPU || spec.MemoryBytes != provider.GeneralMemoryBytes {
 		return "", fmt.Errorf("resource request is outside the allowlisted runner profile: %w", provider.ErrUnsupported)
 	}
-	if spec.RunAsUser != "1001:1001" || !spec.NoNewPrivileges || !spec.WorkdirTmpfs {
+	if spec.RunAsUser != "1001:1001" || !spec.NoNewPrivileges || spec.WorkdirTmpfs || !spec.CredentialTmpfs {
 		return "", fmt.Errorf("runtime security profile is not the fixed MVP profile: %w", provider.ErrUnsupported)
+	}
+	if spec.RunnerDownloadURL != provider.RunnerToolURL || spec.RunnerFilename != provider.RunnerToolFilename || spec.RunnerSHA256 != provider.RunnerToolSHA256 {
+		return "", fmt.Errorf("runner payload is outside the allowlisted verified tool contract: %w", provider.ErrUnsupported)
 	}
 	if len(spec.HostMounts) != 0 || spec.DockerSocket {
 		return "", fmt.Errorf("host mounts and Docker socket are forbidden: %w", provider.ErrUnsupported)
@@ -200,30 +203,30 @@ func composeConfig(spec provider.AppSpec) (string, error) {
 	compose := map[string]any{
 		"services": map[string]any{
 			"runner": map[string]any{
-				"image":   spec.Image,
-				"user":    spec.RunAsUser,
-				"restart": "no",
-				"command": containerBootstrapCommand(),
+				"image":      spec.Image,
+				"user":       spec.RunAsUser,
+				"restart":    "no",
+				"entrypoint": []string{"/bin/sh", "-c", containerBootstrapCommand()},
 				"cap_drop": []string{
 					"ALL",
 				},
 				"security_opt": []string{"no-new-privileges:true"},
 				"cpus":         spec.CPU,
 				"mem_limit":    spec.MemoryBytes,
-				// The runner executable tree and its JIT credential files are
-				// volatile. Unlike the earlier work-only tmpfs, this also ensures
-				// an unclean container stop cannot leave the credential files in
-				// the container writable layer. The work area remains executable
-				// because GitHub Actions workloads legitimately execute files there.
+				// Docker/TrueNAS mounts tmpfs with noexec. Use that property only
+				// for the JIT credential bytes. Runner binaries and _work stay on
+				// the one-job container writable layer so Actions can execute files.
 				"tmpfs": []string{
-					"/home/runner/actions-runner:rw,nosuid,nodev,uid=1001,gid=1001,mode=0700",
-					"/home/runner/_work:rw,nosuid,nodev,uid=1001,gid=1001,mode=0700",
+					"/run/garm-jit:rw,nosuid,nodev,noexec,uid=1001,gid=1001,mode=0700",
 				},
 				"labels": labels,
 				"environment": map[string]string{
-					"GARM_CALLBACK_URL":   spec.CallbackURL,
-					"GARM_METADATA_URL":   spec.MetadataURL,
-					"GARM_INSTANCE_TOKEN": spec.BootstrapToken,
+					"GARM_CALLBACK_URL":        spec.CallbackURL,
+					"GARM_METADATA_URL":        spec.MetadataURL,
+					"GARM_INSTANCE_TOKEN":      spec.BootstrapToken,
+					"GARM_RUNNER_DOWNLOAD_URL": spec.RunnerDownloadURL,
+					"GARM_RUNNER_FILENAME":     spec.RunnerFilename,
+					"GARM_RUNNER_SHA256":       spec.RunnerSHA256,
 				},
 			},
 		},
@@ -271,19 +274,23 @@ func decodeApp(app truenas.App) (provider.App, error) {
 
 	return provider.App{
 		Spec: provider.AppSpec{
-			Name:             app.Name,
-			Image:            image,
-			ControllerID:     controllerID,
-			PoolID:           poolID,
-			CPU:              provider.GeneralCPU,
-			MemoryBytes:      provider.GeneralMemoryBytes,
-			RunAsUser:        "1001:1001",
-			CapDrop:          []string{"ALL"},
-			NoNewPrivileges:  true,
-			WorkdirTmpfs:     true,
-			HostMounts:       []string{},
-			DockerSocket:     false,
-			ExecutionProfile: profile,
+			Name:              app.Name,
+			Image:             image,
+			ControllerID:      controllerID,
+			PoolID:            poolID,
+			CPU:               provider.GeneralCPU,
+			MemoryBytes:       provider.GeneralMemoryBytes,
+			RunAsUser:         "1001:1001",
+			CapDrop:           []string{"ALL"},
+			NoNewPrivileges:   true,
+			WorkdirTmpfs:      false,
+			CredentialTmpfs:   true,
+			HostMounts:        []string{},
+			DockerSocket:      false,
+			RunnerDownloadURL: provider.RunnerToolURL,
+			RunnerFilename:    provider.RunnerToolFilename,
+			RunnerSHA256:      provider.RunnerToolSHA256,
+			ExecutionProfile:  profile,
 		},
 		State: mapState(app.State),
 	}, nil
