@@ -1,7 +1,11 @@
 package truenasstore
 
 import (
+	"archive/tar"
+	"bytes"
+	"compress/gzip"
 	"context"
+	"crypto/sha256"
 	"fmt"
 	"io"
 	"net/http"
@@ -15,19 +19,22 @@ import (
 	"time"
 )
 
-func TestContainerBootstrapUsesPinnedAssetsAndCleansCredentials(t *testing.T) {
-	assets := t.TempDir()
+func TestContainerBootstrapDownloadsVerifiedPayloadAndCleansCredentials(t *testing.T) {
 	runnerHome := filepath.Join(t.TempDir(), "runner")
+	jitDir := filepath.Join(t.TempDir(), "jit")
+	archivePath := filepath.Join(t.TempDir(), "runner.tar.gz")
 	tokenMarker := filepath.Join(t.TempDir(), "token-marker")
-	runScript := fmt.Sprintf("#!/bin/bash\nprintf '%%s' \"${GARM_INSTANCE_TOKEN-unset}\" > %q\nsleep 0.2\n", tokenMarker)
-	if err := os.WriteFile(filepath.Join(assets, "run.sh"), []byte(runScript), 0o755); err != nil {
-		t.Fatal(err)
-	}
+	archive := testRunnerArchive(t, tokenMarker)
+	checksum := fmt.Sprintf("%x", sha256.Sum256(archive))
 
 	const token = "stage4-test-token"
 	var mu sync.Mutex
 	var statuses []string
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path == "/runner.tar.gz" {
+			_, _ = w.Write(archive)
+			return
+		}
 		if got := r.Header.Get("Authorization"); got != "Bearer "+token {
 			http.Error(w, "bad auth", http.StatusUnauthorized)
 			return
@@ -58,8 +65,12 @@ func TestContainerBootstrapUsesPinnedAssetsAndCleansCredentials(t *testing.T) {
 		"GARM_CALLBACK_URL="+server.URL+"/callback",
 		"GARM_METADATA_URL="+server.URL+"/metadata",
 		"GARM_INSTANCE_TOKEN="+token,
-		"RUNNER_ASSETS_DIR="+assets,
-		"RUNNER_HOME="+runnerHome,
+		"GARM_RUNNER_DOWNLOAD_URL="+server.URL+"/runner.tar.gz",
+		"GARM_RUNNER_FILENAME=runner.tar.gz",
+		"GARM_RUNNER_SHA256="+checksum,
+		"GARM_BOOTSTRAP_RUNNER_HOME="+runnerHome,
+		"GARM_BOOTSTRAP_JIT_DIR="+jitDir,
+		"GARM_BOOTSTRAP_RUNNER_ARCHIVE="+archivePath,
 		"GARM_BOOTSTRAP_MAX_ATTEMPTS=1",
 		"GARM_BOOTSTRAP_RETRY_DELAY_SECONDS=0",
 		"GARM_BOOTSTRAP_READY_DELAY_SECONDS=0.05",
@@ -77,9 +88,20 @@ func TestContainerBootstrapUsesPinnedAssetsAndCleansCredentials(t *testing.T) {
 	if got := string(marker); got != "unset" {
 		t.Fatalf("runner child inherited bootstrap token: %q", got)
 	}
-	for _, name := range []string{".runner", ".credentials", ".credentials_rsaparams"} {
-		if _, err := os.Stat(filepath.Join(runnerHome, name)); !os.IsNotExist(err) {
-			t.Fatalf("credential %s survived bootstrap exit", name)
+	if _, err := os.Stat(filepath.Join(runnerHome, "externals", "node24", "bin", "node")); err != nil {
+		t.Fatalf("verified runner payload was not extracted: %v", err)
+	}
+	for _, path := range []string{
+		filepath.Join(runnerHome, ".runner"),
+		filepath.Join(runnerHome, ".credentials"),
+		filepath.Join(runnerHome, ".credentials_rsaparams"),
+		filepath.Join(jitDir, ".runner"),
+		filepath.Join(jitDir, ".credentials"),
+		filepath.Join(jitDir, ".credentials_rsaparams"),
+		archivePath,
+	} {
+		if _, err := os.Lstat(path); !os.IsNotExist(err) {
+			t.Fatalf("transient bootstrap artifact survived exit: %s", path)
 		}
 	}
 
@@ -95,18 +117,21 @@ func TestContainerBootstrapUsesPinnedAssetsAndCleansCredentials(t *testing.T) {
 }
 
 func TestContainerBootstrapFailsClosedOnMetadataAuthFailure(t *testing.T) {
-	assets := t.TempDir()
 	runnerHome := filepath.Join(t.TempDir(), "runner")
-	if err := os.WriteFile(filepath.Join(assets, "run.sh"), []byte("#!/bin/bash\nexit 0\n"), 0o755); err != nil {
-		t.Fatal(err)
-	}
+	jitDir := filepath.Join(t.TempDir(), "jit")
+	archivePath := filepath.Join(t.TempDir(), "runner.tar.gz")
+	archive := testRunnerArchive(t, filepath.Join(t.TempDir(), "marker"))
+	checksum := fmt.Sprintf("%x", sha256.Sum256(archive))
 
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if strings.Contains(r.URL.Path, "/metadata/") {
+		switch {
+		case r.URL.Path == "/runner.tar.gz":
+			_, _ = w.Write(archive)
+		case strings.Contains(r.URL.Path, "/metadata/"):
 			http.Error(w, "expired", http.StatusUnauthorized)
-			return
+		default:
+			w.WriteHeader(http.StatusOK)
 		}
-		w.WriteHeader(http.StatusOK)
 	}))
 	defer server.Close()
 
@@ -117,8 +142,12 @@ func TestContainerBootstrapFailsClosedOnMetadataAuthFailure(t *testing.T) {
 		"GARM_CALLBACK_URL="+server.URL+"/callback",
 		"GARM_METADATA_URL="+server.URL+"/metadata",
 		"GARM_INSTANCE_TOKEN=expired-test-token",
-		"RUNNER_ASSETS_DIR="+assets,
-		"RUNNER_HOME="+runnerHome,
+		"GARM_RUNNER_DOWNLOAD_URL="+server.URL+"/runner.tar.gz",
+		"GARM_RUNNER_FILENAME=runner.tar.gz",
+		"GARM_RUNNER_SHA256="+checksum,
+		"GARM_BOOTSTRAP_RUNNER_HOME="+runnerHome,
+		"GARM_BOOTSTRAP_JIT_DIR="+jitDir,
+		"GARM_BOOTSTRAP_RUNNER_ARCHIVE="+archivePath,
 		"GARM_BOOTSTRAP_MAX_ATTEMPTS=1",
 		"GARM_BOOTSTRAP_RETRY_DELAY_SECONDS=0",
 	)
@@ -126,9 +155,42 @@ func TestContainerBootstrapFailsClosedOnMetadataAuthFailure(t *testing.T) {
 		t.Fatalf("metadata authentication failure unexpectedly succeeded: %s", output)
 	}
 	for _, name := range []string{".runner", ".credentials", ".credentials_rsaparams"} {
-		if _, err := os.Stat(filepath.Join(runnerHome, name)); !os.IsNotExist(err) {
+		if _, err := os.Lstat(filepath.Join(runnerHome, name)); !os.IsNotExist(err) {
+			t.Fatalf("credential link %s survived failed bootstrap", name)
+		}
+		if _, err := os.Lstat(filepath.Join(jitDir, name)); !os.IsNotExist(err) {
 			t.Fatalf("credential %s survived failed bootstrap", name)
 		}
+	}
+}
+
+func TestContainerBootstrapRejectsRunnerChecksumMismatch(t *testing.T) {
+	archive := testRunnerArchive(t, filepath.Join(t.TempDir(), "marker"))
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path == "/runner.tar.gz" {
+			_, _ = w.Write(archive)
+			return
+		}
+		w.WriteHeader(http.StatusOK)
+	}))
+	defer server.Close()
+
+	cmd := exec.CommandContext(context.Background(), "bash", "-c", containerBootstrapCommand())
+	cmd.Env = append(os.Environ(),
+		"GARM_CALLBACK_URL="+server.URL+"/callback",
+		"GARM_METADATA_URL="+server.URL+"/metadata",
+		"GARM_INSTANCE_TOKEN=test-token",
+		"GARM_RUNNER_DOWNLOAD_URL="+server.URL+"/runner.tar.gz",
+		"GARM_RUNNER_FILENAME=runner.tar.gz",
+		"GARM_RUNNER_SHA256="+strings.Repeat("0", 64),
+		"GARM_BOOTSTRAP_RUNNER_HOME="+filepath.Join(t.TempDir(), "runner"),
+		"GARM_BOOTSTRAP_JIT_DIR="+filepath.Join(t.TempDir(), "jit"),
+		"GARM_BOOTSTRAP_RUNNER_ARCHIVE="+filepath.Join(t.TempDir(), "runner.tar.gz"),
+		"GARM_BOOTSTRAP_MAX_ATTEMPTS=1",
+		"GARM_BOOTSTRAP_RETRY_DELAY_SECONDS=0",
+	)
+	if output, err := cmd.CombinedOutput(); err == nil {
+		t.Fatalf("checksum mismatch unexpectedly succeeded: %s", output)
 	}
 }
 
@@ -140,6 +202,8 @@ func TestContainerBootstrapScriptDoesNotEmbedSecretValues(t *testing.T) {
 		}
 	}
 	for _, required := range []string{
+		"sha256sum -c",
+		"externals/node24/bin/node",
 		"credentials/runner",
 		"credentials/credentials",
 		"credentials/credentials_rsaparams",
@@ -150,4 +214,40 @@ func TestContainerBootstrapScriptDoesNotEmbedSecretValues(t *testing.T) {
 			t.Fatalf("bootstrap script missing required contract fragment %q", required)
 		}
 	}
+}
+
+func testRunnerArchive(t *testing.T, tokenMarker string) []byte {
+	t.Helper()
+	var out bytes.Buffer
+	gz := gzip.NewWriter(&out)
+	tw := tar.NewWriter(gz)
+	files := []struct {
+		name string
+		mode int64
+		body string
+	}{
+		{
+			name: "run.sh",
+			mode: 0o755,
+			body: fmt.Sprintf("#!/bin/bash\nprintf '%%s' \"${GARM_INSTANCE_TOKEN-unset}\" > %q\nsleep 0.2\n", tokenMarker),
+		},
+		{name: "bin/Runner.Listener", mode: 0o755, body: "runner-listener-test\n"},
+		{name: "externals/node24/bin/node", mode: 0o755, body: "node24-test\n"},
+	}
+	for _, file := range files {
+		hdr := &tar.Header{Name: file.name, Mode: file.mode, Size: int64(len(file.body))}
+		if err := tw.WriteHeader(hdr); err != nil {
+			t.Fatal(err)
+		}
+		if _, err := tw.Write([]byte(file.body)); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if err := tw.Close(); err != nil {
+		t.Fatal(err)
+	}
+	if err := gz.Close(); err != nil {
+		t.Fatal(err)
+	}
+	return out.Bytes()
 }
