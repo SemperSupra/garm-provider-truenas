@@ -1,31 +1,28 @@
 package truenasstore
 
-// containerBootstrapScript adapts GARM's JIT metadata contract to the
-// container-native runner image. The image already contains the pinned runner
-// assets under /runnertmp, so bootstrap only materializes the short-lived JIT
-// credentials and starts run.sh in the foreground.
-//
-// GARM_INSTANCE_TOKEN is deliberately copied into a non-exported shell
-// variable and removed from the environment before the runner child starts.
-// Auth headers are supplied to curl over stdin rather than in argv. The
-// credential files live under RUNNER_HOME and are removed on every normal
-// shell exit. The TrueNAS app itself is one-job ephemeral and is retired by the
-// provider once it is no longer active.
+// containerBootstrapScript adapts GARM's JIT metadata contract to a
+// container-native runner lifecycle. The pinned actions-runner image provides
+// the tested Ubuntu/runtime dependency base, but the runner executable tree is
+// installed from the exact, checksummed GitHub runner release selected for this
+// MVP. JIT credential bytes live only on a non-executable tmpfs; runner and
+// work files use the one-job container writable layer so they remain executable.
 const containerBootstrapScript = `set -eu
 umask 077
 
 : "${GARM_CALLBACK_URL:?GARM_CALLBACK_URL is required}"
 : "${GARM_METADATA_URL:?GARM_METADATA_URL is required}"
 : "${GARM_INSTANCE_TOKEN:?GARM_INSTANCE_TOKEN is required}"
+: "${GARM_RUNNER_DOWNLOAD_URL:?GARM_RUNNER_DOWNLOAD_URL is required}"
+: "${GARM_RUNNER_FILENAME:?GARM_RUNNER_FILENAME is required}"
+: "${GARM_RUNNER_SHA256:?GARM_RUNNER_SHA256 is required}"
 
-RUNNER_ASSETS_DIR="${RUNNER_ASSETS_DIR:-/runnertmp}"
-RUNNER_HOME="${RUNNER_HOME:-/home/runner/actions-runner}"
+RUNNER_HOME="${GARM_BOOTSTRAP_RUNNER_HOME:-/home/runner/actions-runner}"
+JIT_DIR="${GARM_BOOTSTRAP_JIT_DIR:-/run/garm-jit}"
+RUNNER_ARCHIVE="${GARM_BOOTSTRAP_RUNNER_ARCHIVE:-/home/runner/${GARM_RUNNER_FILENAME}}"
 MAX_ATTEMPTS="${GARM_BOOTSTRAP_MAX_ATTEMPTS:-5}"
 RETRY_DELAY="${GARM_BOOTSTRAP_RETRY_DELAY_SECONDS:-2}"
 READY_DELAY="${GARM_BOOTSTRAP_READY_DELAY_SECONDS:-2}"
 
-# Keep the bearer token in this bootstrap shell only. Imported environment
-# variables are exported by bash; a fresh assignment is not.
 bootstrap_token="$GARM_INSTANCE_TOKEN"
 unset GARM_INSTANCE_TOKEN
 runner_pid=""
@@ -35,9 +32,14 @@ cleanup_credentials() {
     "$RUNNER_HOME/.runner" \
     "$RUNNER_HOME/.credentials" \
     "$RUNNER_HOME/.credentials_rsaparams" \
-    "$RUNNER_HOME/.runner.tmp" \
-    "$RUNNER_HOME/.credentials.tmp" \
-    "$RUNNER_HOME/.credentials_rsaparams.tmp"
+    "$JIT_DIR/.runner" \
+    "$JIT_DIR/.credentials" \
+    "$JIT_DIR/.credentials_rsaparams" \
+    "$JIT_DIR/.runner.tmp" \
+    "$JIT_DIR/.credentials.tmp" \
+    "$JIT_DIR/.credentials_rsaparams.tmp" \
+    "$RUNNER_ARCHIVE" \
+    "${RUNNER_ARCHIVE}.tmp"
 }
 
 terminate_runner() {
@@ -65,19 +67,13 @@ post_json() {
   attempt=1
   while [ "$attempt" -le "$MAX_ATTEMPTS" ]; do
     if printf 'header = "Authorization: Bearer %s"\n' "$bootstrap_token" | \
-      curl --config - \
-      --fail --silent --show-error \
-      --connect-timeout 5 --max-time 30 \
-      -X POST \
-      -H 'Accept: application/json' \
-      -H 'Content-Type: application/json' \
-      --data "$payload" \
-      "$url" >/dev/null; then
+      curl --config - --fail --silent --show-error \
+      --connect-timeout 5 --max-time 30 -X POST \
+      -H 'Accept: application/json' -H 'Content-Type: application/json' \
+      --data "$payload" "$url" >/dev/null; then
       return 0
     fi
-    if [ "$attempt" -lt "$MAX_ATTEMPTS" ]; then
-      sleep "$RETRY_DELAY"
-    fi
+    if [ "$attempt" -lt "$MAX_ATTEMPTS" ]; then sleep "$RETRY_DELAY"; fi
     attempt=$((attempt + 1))
   done
   return 1
@@ -98,12 +94,9 @@ fetch_metadata() {
   attempt=1
   while [ "$attempt" -le "$MAX_ATTEMPTS" ]; do
     if printf 'header = "Authorization: Bearer %s"\n' "$bootstrap_token" | \
-      curl --config - \
-      --fail --silent --show-error --location \
-      --connect-timeout 5 --max-time 30 \
-      -H 'Accept: application/json' \
-      "${metadata_base}/${path}" \
-      -o "$tmp"; then
+      curl --config - --fail --silent --show-error --location \
+      --connect-timeout 5 --max-time 30 -H 'Accept: application/json' \
+      "${metadata_base}/${path}" -o "$tmp"; then
       if [ -s "$tmp" ]; then
         mv "$tmp" "$destination"
         chmod 600 "$destination"
@@ -111,47 +104,72 @@ fetch_metadata() {
       fi
     fi
     rm -f "$tmp"
-    if [ "$attempt" -lt "$MAX_ATTEMPTS" ]; then
-      sleep "$RETRY_DELAY"
-    fi
+    if [ "$attempt" -lt "$MAX_ATTEMPTS" ]; then sleep "$RETRY_DELAY"; fi
     attempt=$((attempt + 1))
   done
   return 1
 }
 
-post_status installing 'preparing container runner' || exit 20
+download_runner() {
+  tmp="${RUNNER_ARCHIVE}.tmp"
+  rm -f "$tmp" "$RUNNER_ARCHIVE"
+  attempt=1
+  while [ "$attempt" -le "$MAX_ATTEMPTS" ]; do
+    if curl --fail --silent --show-error --location \
+      --connect-timeout 5 --max-time 180 "$GARM_RUNNER_DOWNLOAD_URL" -o "$tmp"; then
+      if printf '%s  %s\n' "$GARM_RUNNER_SHA256" "$tmp" | sha256sum -c - >/dev/null 2>&1; then
+        mv "$tmp" "$RUNNER_ARCHIVE"
+        return 0
+      fi
+    fi
+    rm -f "$tmp"
+    if [ "$attempt" -lt "$MAX_ATTEMPTS" ]; then sleep "$RETRY_DELAY"; fi
+    attempt=$((attempt + 1))
+  done
+  return 1
+}
 
-if [ ! -d "$RUNNER_ASSETS_DIR" ] || [ ! -f "$RUNNER_ASSETS_DIR/run.sh" ]; then
-  post_status failed 'pinned runner assets are unavailable' || true
+post_status installing 'downloading verified runner payload' || exit 20
+download_runner || {
+  post_status failed 'failed to download or verify runner payload' || true
   exit 21
-fi
+}
 
-mkdir -p "$RUNNER_HOME"
-# Do not use cp -a here. /runnertmp is root-owned in the official image and the
-# provider deliberately runs as uid 1001 with no-new-privileges, so preserving
-# root ownership would fail. A normal recursive copy creates the ephemeral
-# runner tree as the unprivileged runner user while retaining executable bits.
-cp -R "$RUNNER_ASSETS_DIR/." "$RUNNER_HOME/"
-if [ -d "$RUNNER_HOME/externalstmp" ]; then
-  mkdir -p "$RUNNER_HOME/externals"
-  cp -R "$RUNNER_HOME/externalstmp/." "$RUNNER_HOME/externals/"
-  rm -rf "$RUNNER_HOME/externalstmp"
+rm -rf "$RUNNER_HOME"
+mkdir -p "$RUNNER_HOME" "$JIT_DIR"
+tar xzf "$RUNNER_ARCHIVE" -C "$RUNNER_HOME" || {
+  post_status failed 'failed to extract runner payload' || true
+  exit 22
+}
+rm -f "$RUNNER_ARCHIVE"
+
+if [ ! -x "$RUNNER_HOME/run.sh" ] || [ ! -x "$RUNNER_HOME/bin/Runner.Listener" ]; then
+  post_status failed 'verified runner payload is incomplete' || true
+  exit 23
+fi
+if [ ! -x "$RUNNER_HOME/externals/node24/bin/node" ]; then
+  post_status failed 'verified runner payload lacks the required node24 action runtime' || true
+  exit 24
 fi
 cd "$RUNNER_HOME"
 
-post_status installing 'fetching JIT runner metadata' || exit 22
-fetch_metadata 'credentials/runner' '.runner' || {
+post_status installing 'fetching JIT runner metadata' || exit 25
+fetch_metadata 'credentials/runner' "$JIT_DIR/.runner" || {
   post_status failed 'failed to fetch runner metadata' || true
-  exit 23
+  exit 26
 }
-fetch_metadata 'credentials/credentials' '.credentials' || {
+fetch_metadata 'credentials/credentials' "$JIT_DIR/.credentials" || {
   post_status failed 'failed to fetch runner credentials' || true
-  exit 24
+  exit 27
 }
-fetch_metadata 'credentials/credentials_rsaparams' '.credentials_rsaparams' || {
+fetch_metadata 'credentials/credentials_rsaparams' "$JIT_DIR/.credentials_rsaparams" || {
   post_status failed 'failed to fetch runner RSA parameters' || true
-  exit 25
+  exit 28
 }
+
+ln -s "$JIT_DIR/.runner" .runner
+ln -s "$JIT_DIR/.credentials" .credentials
+ln -s "$JIT_DIR/.credentials_rsaparams" .credentials_rsaparams
 
 # The runner process must never inherit the GARM bootstrap bearer token.
 env -u GARM_INSTANCE_TOKEN ./run.sh &
@@ -160,7 +178,7 @@ sleep "$READY_DELAY"
 if ! kill -0 "$runner_pid" 2>/dev/null; then
   wait "$runner_pid" 2>/dev/null || true
   post_status failed 'runner exited during bootstrap' || true
-  exit 26
+  exit 29
 fi
 
 os_name=""
@@ -181,19 +199,15 @@ fi
 post_json "${callback_base}/system-info/" "$system_payload" || {
   kill -TERM "$runner_pid" 2>/dev/null || true
   wait "$runner_pid" 2>/dev/null || true
-  exit 27
+  exit 30
 }
 post_json "$status_url" "$ready_payload" || {
   kill -TERM "$runner_pid" 2>/dev/null || true
   wait "$runner_pid" 2>/dev/null || true
-  exit 28
+  exit 31
 }
 
-# Once GARM accepts idle, its instance middleware no longer accepts this token.
-# Clear our live copy immediately; only the unavoidable TrueNAS app-config
-# residue remains until the ephemeral app is retired.
 bootstrap_token=''
-
 set +e
 wait "$runner_pid"
 runner_rc=$?
