@@ -7,14 +7,25 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"strings"
 
 	"github.com/SemperSupra/garm-provider-truenas/internal/mockstore"
 	"github.com/SemperSupra/garm-provider-truenas/internal/provider"
+	"github.com/SemperSupra/garm-provider-truenas/internal/truenasstore"
 )
 
+type trueNASConfig struct {
+	Host               string `json:"host"`
+	Username           string `json:"username"`
+	APIKeyEnv          string `json:"api_key_env"`
+	Port               int    `json:"port,omitempty"`
+	InsecureSkipVerify bool   `json:"insecure_skip_verify,omitempty"`
+}
+
 type config struct {
-	Mode      string `json:"mode"`
-	StateFile string `json:"state_file"`
+	Mode      string         `json:"mode"`
+	StateFile string         `json:"state_file,omitempty"`
+	TrueNAS   *trueNASConfig `json:"truenas,omitempty"`
 }
 
 func main() {
@@ -36,14 +47,49 @@ func run(ctx context.Context, stdin io.Reader, stdout, _ io.Writer) error {
 	if err != nil {
 		return err
 	}
-	if cfg.Mode != "mock" {
-		return fmt.Errorf("provider mode %q is not enabled; live TrueNAS transport remains fail-closed until protocol qualification is complete", cfg.Mode)
+
+	var backend provider.Client
+	var closeBackend func() error
+	switch cfg.Mode {
+	case "mock":
+		if cfg.StateFile == "" {
+			return errors.New("mock state_file is required")
+		}
+		backend = mockstore.New(cfg.StateFile)
+
+	case "truenas":
+		if cfg.TrueNAS == nil {
+			return errors.New("truenas configuration is required for truenas mode")
+		}
+		apiKeyEnv := strings.TrimSpace(cfg.TrueNAS.APIKeyEnv)
+		if apiKeyEnv == "" {
+			apiKeyEnv = "TRUENAS_API_KEY"
+		}
+		apiKey := os.Getenv(apiKeyEnv)
+		if strings.TrimSpace(apiKey) == "" {
+			return fmt.Errorf("TrueNAS API key environment variable %q is empty", apiKeyEnv)
+		}
+		store, closer, err := truenasstore.Connect(ctx, truenasstore.Config{
+			Host:               cfg.TrueNAS.Host,
+			Username:           cfg.TrueNAS.Username,
+			APIKey:             apiKey,
+			Port:               cfg.TrueNAS.Port,
+			InsecureSkipVerify: cfg.TrueNAS.InsecureSkipVerify,
+		})
+		if err != nil {
+			return err
+		}
+		backend = store
+		closeBackend = closer
+
+	default:
+		return fmt.Errorf("provider mode %q is not supported", cfg.Mode)
 	}
-	if cfg.StateFile == "" {
-		return errors.New("mock state_file is required")
+	if closeBackend != nil {
+		defer func() { _ = closeBackend() }()
 	}
 
-	manager, err := provider.NewManager(mockstore.New(cfg.StateFile), controllerID)
+	manager, err := provider.NewManager(backend, controllerID)
 	if err != nil {
 		return err
 	}
@@ -98,7 +144,9 @@ func loadConfig(path string) (config, error) {
 		return cfg, err
 	}
 	defer f.Close()
-	if err := json.NewDecoder(f).Decode(&cfg); err != nil {
+	decoder := json.NewDecoder(f)
+	decoder.DisallowUnknownFields()
+	if err := decoder.Decode(&cfg); err != nil {
 		return cfg, err
 	}
 	return cfg, nil
