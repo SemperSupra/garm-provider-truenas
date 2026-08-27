@@ -1,4 +1,4 @@
-name: Diagnose Stage 2 gofmt
+name: Diagnose Stage 2 dependency lock
 
 on:
   push:
@@ -17,9 +17,15 @@ jobs:
       - uses: actions/setup-go@924ae3a1cded613372ab5595356fb5720e22ba16 # v6
         with:
           go-version-file: go.mod
-      - name: Show gofmt diff
+      - name: Generate deterministic module metadata
         shell: bash
         run: |
           set -euo pipefail
           go version
-          gofmt -d internal/truenasstore/store.go || true
+          go mod tidy
+          echo '--- GO.MOD BEGIN ---'
+          cat go.mod
+          echo '--- GO.MOD END ---'
+          echo '--- GO.SUM BEGIN ---'
+          cat go.sum
+          echo '--- GO.SUM END ---'
