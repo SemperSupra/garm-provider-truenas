@@ -2,13 +2,15 @@
 
 This provider implements the GARM external-provider lifecycle contract for ephemeral TrueNAS workloads while keeping TrueNAS-specific safety decisions outside GARM core.
 
+Canonical cross-project terminology is defined in `SemperSupra/truenas-app-foundry/docs/terminology.md`. In this provider, **runtime realization** means actual TrueNAS App creation/startup. **Materialization** is reserved for the broader Foundry source-rendering → target-lowering pipeline.
+
 ## MVP contract
 
 - Linux x86-64 only.
 - Execution profile: `truenas-linux-general`.
 - One job per ephemeral runner workload.
 - Fixed image/resource/security profile; arbitrary Compose is not accepted from GARM.
-- Exact allowlisted GitHub runner tool contract: tested version, official release URL/filename, and SHA-256 must match before materialization proceeds.
+- Exact allowlisted GitHub runner tool contract: tested version, official release URL/filename, and SHA-256 must match before runtime realization proceeds.
 - Container-native JIT bootstrap; no VM/cloud-init/systemd dependency.
 - Official runner payload is checksum-verified before extraction and must include `run.sh`, `Runner.Listener`, and Node 24.
 - JIT credential bytes are isolated on a credential-only `noexec` tmpfs; runner binaries and the Actions work tree remain executable on the one-job container layer.
@@ -22,7 +24,11 @@ This provider implements the GARM external-provider lifecycle contract for ephem
 
 GitHub-hosted public CI exercises formatting, module integrity, vet, race tests, provider build, GARM contract tests, bootstrap/callback tests, and a real Docker smoke of the exact pinned runtime image plus the checksummed official runner payload and Node 24 runtime. Public workflows reject self-hosted runner labels and private TrueNAS access.
 
-This qualification proves generic code and container behavior; it does not claim real TrueNAS networking, App lifecycle timing, GitHub runner registration, scale-set behavior, or target-host cleanup. Those require private hardware-in-loop qualification.
+This qualification proves generic code and container behavior; it does not claim real TrueNAS runtime realization, networking, App lifecycle timing, GitHub runner registration, scale-set behavior, or target-host cleanup. Those require private hardware-in-loop qualification.
+
+## Foundry boundary
+
+The provider is a native TrueNAS runtime-realization component, not the general Foundry source materializer and not a general multi-runtime target adapter. Future Foundry targets such as Docker Compose, Podman/Quadlet, Kubernetes/k3s, Nomad, or OCI/containerd require separate target-lowering adapters and qualification.
 
 ## Known MVP limitation
 
