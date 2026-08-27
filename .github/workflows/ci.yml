@@ -56,6 +56,35 @@ jobs:
       - name: Build provider executable
         run: go build ./cmd/garm-provider-truenas
 
+      - name: Smoke pinned runner image contract
+        shell: bash
+        run: |
+          set -euo pipefail
+          image="$(sed -n 's/^[[:space:]]*RunnerImage[[:space:]]*=[[:space:]]*"\([^"]*\)".*/\1/p' internal/provider/provider.go)"
+          if [ -z "$image" ]; then
+            echo 'Unable to resolve pinned RunnerImage from provider source.'
+            exit 1
+          fi
+          docker pull "$image"
+          docker run --rm \
+            --user 1001:1001 \
+            --cap-drop ALL \
+            --security-opt no-new-privileges:true \
+            --tmpfs /home/runner/actions-runner:rw,nosuid,nodev,uid=1001,gid=1001,mode=0700 \
+            --entrypoint /bin/bash \
+            "$image" -c '
+              set -euo pipefail
+              test "$(id -u)" = 1001
+              test -x /runnertmp/run.sh
+              test -x /runnertmp/bin/Runner.Listener
+              command -v curl >/dev/null
+              command -v sed >/dev/null
+              mkdir -p /home/runner/actions-runner
+              cp -R /runnertmp/. /home/runner/actions-runner/
+              test -x /home/runner/actions-runner/run.sh
+              test -x /home/runner/actions-runner/bin/Runner.Listener
+            '
+
       - name: Enforce public execution boundary
         shell: bash
         run: |
