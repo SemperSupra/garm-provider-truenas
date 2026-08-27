@@ -35,6 +35,7 @@ jobs:
           unformatted="$(gofmt -l .)"
           if [ -n "$unformatted" ]; then
             printf 'Unformatted Go files:\n%s\n' "$unformatted"
+            gofmt -d $unformatted
             exit 1
           fi
 
