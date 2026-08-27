@@ -20,6 +20,10 @@ var (
 const (
 	FlavorLinuxGeneral = "truenas-linux-general"
 	RunnerImage        = "ghcr.io/actions/actions-runner:2.336.0@sha256:0cfdcc701ce933c6d243c6b0b2da767366dc9f2e99961d4c3754b0b78084cdda"
+	RunnerVersion      = "2.336.0"
+	RunnerToolFilename = "actions-runner-linux-x64-" + RunnerVersion + ".tar.gz"
+	RunnerToolURL      = "https://github.com/actions/runner/releases/download/v" + RunnerVersion + "/" + RunnerToolFilename
+	RunnerToolSHA256   = "04cf0be1aff4c3ec3554466c39124ca250e3effd8873bb7e8d68535aa9505d5d"
 	GeneralCPU         = 4
 	GeneralMemoryBytes = int64(8 * 1024 * 1024 * 1024)
 	TrueNASAppNameMax  = 40
@@ -47,22 +51,26 @@ type Bootstrap struct {
 }
 
 type AppSpec struct {
-	Name             string   `json:"name"`
-	Image            string   `json:"image"`
-	ControllerID     string   `json:"controller_id"`
-	PoolID           string   `json:"pool_id"`
-	CPU              int      `json:"cpu"`
-	MemoryBytes      int64    `json:"memory_bytes"`
-	RunAsUser        string   `json:"run_as_user"`
-	CapDrop          []string `json:"cap_drop"`
-	NoNewPrivileges  bool     `json:"no_new_privileges"`
-	WorkdirTmpfs     bool     `json:"workdir_tmpfs"`
-	HostMounts       []string `json:"host_mounts"`
-	DockerSocket     bool     `json:"docker_socket"`
-	CallbackURL      string   `json:"callback_url"`
-	MetadataURL      string   `json:"metadata_url"`
-	BootstrapToken   string   `json:"bootstrap_token"`
-	ExecutionProfile string   `json:"execution_profile"`
+	Name              string   `json:"name"`
+	Image             string   `json:"image"`
+	ControllerID      string   `json:"controller_id"`
+	PoolID            string   `json:"pool_id"`
+	CPU               int      `json:"cpu"`
+	MemoryBytes       int64    `json:"memory_bytes"`
+	RunAsUser         string   `json:"run_as_user"`
+	CapDrop           []string `json:"cap_drop"`
+	NoNewPrivileges   bool     `json:"no_new_privileges"`
+	WorkdirTmpfs      bool     `json:"workdir_tmpfs"`
+	CredentialTmpfs   bool     `json:"credential_tmpfs"`
+	HostMounts        []string `json:"host_mounts"`
+	DockerSocket      bool     `json:"docker_socket"`
+	CallbackURL       string   `json:"callback_url"`
+	MetadataURL       string   `json:"metadata_url"`
+	BootstrapToken    string   `json:"bootstrap_token"`
+	RunnerDownloadURL string   `json:"runner_download_url"`
+	RunnerFilename    string   `json:"runner_filename"`
+	RunnerSHA256      string   `json:"runner_sha256"`
+	ExecutionProfile  string   `json:"execution_profile"`
 }
 
 type App struct {
@@ -122,22 +130,26 @@ func (m *Manager) Create(ctx context.Context, in Bootstrap) (Instance, error) {
 	}
 
 	spec := AppSpec{
-		Name:             name,
-		Image:            RunnerImage,
-		ControllerID:     m.controllerID,
-		PoolID:           in.PoolID,
-		CPU:              GeneralCPU,
-		MemoryBytes:      GeneralMemoryBytes,
-		RunAsUser:        "1001:1001",
-		CapDrop:          []string{"ALL"},
-		NoNewPrivileges:  true,
-		WorkdirTmpfs:     true,
-		HostMounts:       []string{},
-		DockerSocket:     false,
-		CallbackURL:      in.CallbackURL,
-		MetadataURL:      in.MetadataURL,
-		BootstrapToken:   in.Token,
-		ExecutionProfile: FlavorLinuxGeneral,
+		Name:              name,
+		Image:             RunnerImage,
+		ControllerID:      m.controllerID,
+		PoolID:            in.PoolID,
+		CPU:               GeneralCPU,
+		MemoryBytes:       GeneralMemoryBytes,
+		RunAsUser:         "1001:1001",
+		CapDrop:           []string{"ALL"},
+		NoNewPrivileges:   true,
+		WorkdirTmpfs:      false,
+		CredentialTmpfs:   true,
+		HostMounts:        []string{},
+		DockerSocket:      false,
+		CallbackURL:       in.CallbackURL,
+		MetadataURL:       in.MetadataURL,
+		BootstrapToken:    in.Token,
+		RunnerDownloadURL: RunnerToolURL,
+		RunnerFilename:    RunnerToolFilename,
+		RunnerSHA256:      RunnerToolSHA256,
+		ExecutionProfile:  FlavorLinuxGeneral,
 	}
 
 	created, err := m.client.CreateApp(ctx, spec)

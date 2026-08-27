@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"reflect"
+	"strings"
 	"testing"
 
 	truenas "github.com/deevus/truenas-go"
@@ -15,22 +16,26 @@ import (
 
 func fixedSpec() provider.AppSpec {
 	return provider.AppSpec{
-		Name:             "garm-controller-runner-1",
-		Image:            provider.RunnerImage,
-		ControllerID:     "controller-123",
-		PoolID:           "pool-123",
-		CPU:              provider.GeneralCPU,
-		MemoryBytes:      provider.GeneralMemoryBytes,
-		RunAsUser:        "1001:1001",
-		CapDrop:          []string{"ALL"},
-		NoNewPrivileges:  true,
-		WorkdirTmpfs:     true,
-		HostMounts:       []string{},
-		DockerSocket:     false,
-		CallbackURL:      "https://garm.example.invalid/api/v1/callbacks",
-		MetadataURL:      "https://garm.example.invalid/api/v1/metadata",
-		BootstrapToken:   "ephemeral-test-token",
-		ExecutionProfile: provider.FlavorLinuxGeneral,
+		Name:              "garm-controller-runner-1",
+		Image:             provider.RunnerImage,
+		ControllerID:      "controller-123",
+		PoolID:            "pool-123",
+		CPU:               provider.GeneralCPU,
+		MemoryBytes:       provider.GeneralMemoryBytes,
+		RunAsUser:         "1001:1001",
+		CapDrop:           []string{"ALL"},
+		NoNewPrivileges:   true,
+		WorkdirTmpfs:      false,
+		CredentialTmpfs:   true,
+		HostMounts:        []string{},
+		DockerSocket:      false,
+		CallbackURL:       "https://garm.example.invalid/api/v1/callbacks",
+		MetadataURL:       "https://garm.example.invalid/api/v1/metadata",
+		BootstrapToken:    "ephemeral-test-token",
+		RunnerDownloadURL: provider.RunnerToolURL,
+		RunnerFilename:    provider.RunnerToolFilename,
+		RunnerSHA256:      provider.RunnerToolSHA256,
+		ExecutionProfile:  provider.FlavorLinuxGeneral,
 	}
 }
 
@@ -93,6 +98,34 @@ func TestCreateUsesFixedCustomComposeAndRecoversOwnership(t *testing.T) {
 	if runner["privileged"] == true {
 		t.Fatal("privileged runner must not be generated")
 	}
+
+	entrypoint, ok := runner["entrypoint"].([]any)
+	if !ok || len(entrypoint) != 3 || entrypoint[0] != "/bin/sh" || entrypoint[1] != "-c" {
+		t.Fatalf("bootstrap must use deterministic shell entrypoint: %#v", runner["entrypoint"])
+	}
+	if script, _ := entrypoint[2].(string); !strings.Contains(script, "sha256sum -c") || !strings.Contains(script, "credentials/runner") {
+		t.Fatalf("bootstrap entrypoint is missing verified download/JIT behavior")
+	}
+
+	tmpfs, ok := runner["tmpfs"].([]any)
+	if !ok || len(tmpfs) != 1 {
+		t.Fatalf("expected credential-only tmpfs, got %#v", runner["tmpfs"])
+	}
+	mount, _ := tmpfs[0].(string)
+	if !strings.HasPrefix(mount, "/run/garm-jit:") || !strings.Contains(mount, "noexec") {
+		t.Fatalf("JIT tmpfs must be non-executable: %q", mount)
+	}
+	if strings.Contains(mount, "/home/runner/_work") || strings.Contains(mount, "/home/runner/actions-runner") {
+		t.Fatalf("runner/work executable paths must not be tmpfs mounted: %q", mount)
+	}
+
+	env := runner["environment"].(map[string]any)
+	if env["GARM_RUNNER_DOWNLOAD_URL"] != provider.RunnerToolURL || env["GARM_RUNNER_FILENAME"] != provider.RunnerToolFilename || env["GARM_RUNNER_SHA256"] != provider.RunnerToolSHA256 {
+		t.Fatalf("verified runner payload metadata missing from Compose: %#v", env)
+	}
+	if _, ok := env["GARM_RUNNER_TEMP_DOWNLOAD_TOKEN"]; ok {
+		t.Fatal("temporary runner download token must not be persisted in Compose")
+	}
 }
 
 func TestComposeRejectsProfileEscape(t *testing.T) {
@@ -106,6 +139,18 @@ func TestComposeRejectsProfileEscape(t *testing.T) {
 	spec.Image = "ubuntu:latest"
 	if _, err := composeConfig(spec); !errors.Is(err, provider.ErrUnsupported) {
 		t.Fatalf("mutable/unapproved image should be rejected, got %v", err)
+	}
+
+	spec = fixedSpec()
+	spec.WorkdirTmpfs = true
+	if _, err := composeConfig(spec); !errors.Is(err, provider.ErrUnsupported) {
+		t.Fatalf("noexec workdir tmpfs should be rejected, got %v", err)
+	}
+
+	spec = fixedSpec()
+	spec.RunnerSHA256 = strings.Repeat("0", 64)
+	if _, err := composeConfig(spec); !errors.Is(err, provider.ErrUnsupported) {
+		t.Fatalf("unverified runner payload should be rejected, got %v", err)
 	}
 }
 

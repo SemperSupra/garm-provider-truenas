@@ -35,6 +35,7 @@ jobs:
           unformatted="$(gofmt -l .)"
           if [ -n "$unformatted" ]; then
             printf 'Unformatted Go files:\n%s\n' "$unformatted"
+            gofmt -d $unformatted
             exit 1
           fi
 
@@ -55,6 +56,64 @@ jobs:
 
       - name: Build provider executable
         run: go build ./cmd/garm-provider-truenas
+
+      - name: Smoke pinned image and verified runner payload
+        shell: bash
+        run: |
+          set -euo pipefail
+          source_file=internal/provider/provider.go
+          image="$(sed -n 's/^[[:space:]]*RunnerImage[[:space:]]*=[[:space:]]*"\([^"]*\)".*/\1/p' "$source_file")"
+          version="$(sed -n 's/^[[:space:]]*RunnerVersion[[:space:]]*=[[:space:]]*"\([^"]*\)".*/\1/p' "$source_file")"
+          checksum="$(sed -n 's/^[[:space:]]*RunnerToolSHA256[[:space:]]*=[[:space:]]*"\([^"]*\)".*/\1/p' "$source_file")"
+          if [ -z "$image" ] || [ -z "$version" ] || [ -z "$checksum" ]; then
+            echo 'Unable to resolve pinned runner contract from provider source.'
+            exit 1
+          fi
+          filename="actions-runner-linux-x64-${version}.tar.gz"
+          url="https://github.com/actions/runner/releases/download/v${version}/${filename}"
+
+          docker pull "$image"
+          docker run --rm \
+            --user 1001:1001 \
+            --cap-drop ALL \
+            --security-opt no-new-privileges:true \
+            --tmpfs /run/garm-jit:rw,nosuid,nodev,noexec,uid=1001,gid=1001,mode=0700 \
+            --env GARM_TEST_RUNNER_URL="$url" \
+            --env GARM_TEST_RUNNER_SHA256="$checksum" \
+            --entrypoint /bin/sh \
+            "$image" -c '
+              set -eu
+              test "$(id -u)" = 1001
+              command -v curl >/dev/null
+              command -v sed >/dev/null
+              command -v tar >/dev/null
+              command -v sha256sum >/dev/null
+
+              test -w /home/runner
+              test -w /run/garm-jit
+              mount | grep " /run/garm-jit " | grep -q noexec
+              printf "#!/bin/sh\nexit 0\n" > /run/garm-jit/noexec-probe
+              chmod 700 /run/garm-jit/noexec-probe
+              if /run/garm-jit/noexec-probe 2>/dev/null; then
+                echo "Credential tmpfs unexpectedly allows direct execution."
+                exit 1
+              fi
+
+              archive=/home/runner/stage4-runner.tar.gz
+              rm -rf /home/runner/actions-runner "$archive"
+              curl --fail --silent --show-error --location \
+                --connect-timeout 5 --max-time 180 \
+                "$GARM_TEST_RUNNER_URL" -o "$archive"
+              printf "%s  %s\n" "$GARM_TEST_RUNNER_SHA256" "$archive" | sha256sum -c -
+              mkdir -p /home/runner/actions-runner
+              tar xzf "$archive" -C /home/runner/actions-runner
+              rm -f "$archive"
+
+              test -x /home/runner/actions-runner/run.sh
+              test -x /home/runner/actions-runner/bin/Runner.Listener
+              test -x /home/runner/actions-runner/externals/node24/bin/node
+              /home/runner/actions-runner/externals/node24/bin/node --version
+            '
 
       - name: Enforce public execution boundary
         shell: bash
