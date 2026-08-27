@@ -74,13 +74,45 @@ jobs:
             --entrypoint /bin/bash \
             "$image" -c '
               set -euo pipefail
-              test "$(id -u)" = 1001
-              test -x /runnertmp/run.sh
-              test -x /runnertmp/bin/Runner.Listener
-              command -v curl >/dev/null
-              command -v sed >/dev/null
-              mkdir -p /home/runner/actions-runner
+              echo "== identity =="
+              id
+              echo "== runner assets =="
+              ls -ld /runnertmp || true
+              find /runnertmp -maxdepth 2 -type f \( -name run.sh -o -name Runner.Listener \) -exec stat -c "%u:%g %a %n" {} \; || true
+              echo "== required tools =="
+              command -v curl || true
+              command -v sed || true
+              echo "== tmpfs =="
+              stat -c "%u:%g %a %n" /home/runner/actions-runner
+              mount | grep "/home/runner/actions-runner" || true
+
+              failures=0
+              check() {
+                description="$1"
+                shift
+                if "$@"; then
+                  echo "PASS: ${description}"
+                else
+                  echo "FAIL: ${description}"
+                  failures=$((failures + 1))
+                fi
+              }
+
+              check "container runs as uid 1001" test "$(id -u)" = 1001
+              check "runner run.sh exists and is executable" test -x /runnertmp/run.sh
+              check "Runner.Listener exists and is executable" test -x /runnertmp/bin/Runner.Listener
+              check "curl is installed" bash -c "command -v curl >/dev/null"
+              check "sed is installed" bash -c "command -v sed >/dev/null"
+              check "runner tmpfs is writable" test -w /home/runner/actions-runner
+
+              if [ "$failures" -ne 0 ]; then
+                echo "Pinned runner image contract failed ${failures} pre-copy assertion(s)."
+                exit 1
+              fi
+
               cp -R /runnertmp/. /home/runner/actions-runner/
+              echo "== copied runner tree =="
+              stat -c "%u:%g %a %n" /home/runner/actions-runner/run.sh /home/runner/actions-runner/bin/Runner.Listener
               test -x /home/runner/actions-runner/run.sh
               test -x /home/runner/actions-runner/bin/Runner.Listener
             '
