@@ -264,8 +264,20 @@ func TestConfigRejectsUnknownFields(t *testing.T) {
 }
 
 func validBootstrap() garmParams.BootstrapInstance {
+	osName := "linux"
+	arch := "x64"
+	filename := provider.RunnerToolFilename
+	downloadURL := provider.RunnerToolURL
+	checksum := provider.RunnerToolSHA256
 	return garmParams.BootstrapInstance{
-		Name:             "runner-123",
+		Name: "runner-123",
+		Tools: []garmParams.RunnerApplicationDownload{{
+			OS:             &osName,
+			Architecture:   &arch,
+			DownloadURL:    &downloadURL,
+			Filename:       &filename,
+			SHA256Checksum: &checksum,
+		}},
 		RepoURL:          "https://github.com/SemperSupra/example",
 		CallbackURL:      "https://garm.example.invalid/api/v1/callbacks",
 		MetadataURL:      "https://garm.example.invalid/api/v1/metadata",
