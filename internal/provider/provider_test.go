@@ -3,6 +3,7 @@ package provider
 import (
 	"context"
 	"errors"
+	"strings"
 	"testing"
 )
 
@@ -73,8 +74,11 @@ func TestCreateUsesLockedSecurityProfile(t *testing.T) {
 	if app.Spec.CPU != GeneralCPU || app.Spec.MemoryBytes != GeneralMemoryBytes {
 		t.Fatalf("unexpected resource profile: %#v", app.Spec)
 	}
-	if app.Spec.RunAsUser != "1001:1001" || !app.Spec.NoNewPrivileges || !app.Spec.WorkdirTmpfs {
+	if app.Spec.RunAsUser != "1001:1001" || !app.Spec.NoNewPrivileges || app.Spec.WorkdirTmpfs || !app.Spec.CredentialTmpfs {
 		t.Fatalf("security invariants missing: %#v", app.Spec)
+	}
+	if app.Spec.RunnerDownloadURL != RunnerToolURL || app.Spec.RunnerFilename != RunnerToolFilename || app.Spec.RunnerSHA256 != RunnerToolSHA256 {
+		t.Fatalf("verified runner tool contract missing: %#v", app.Spec)
 	}
 	if len(app.Spec.CapDrop) != 1 || app.Spec.CapDrop[0] != "ALL" {
 		t.Fatalf("capabilities not dropped: %#v", app.Spec.CapDrop)
@@ -100,6 +104,30 @@ func TestCreateIsIdempotent(t *testing.T) {
 	}
 	if client.createCount != 1 {
 		t.Fatalf("expected one create, got %d", client.createCount)
+	}
+}
+
+func TestOwnedNameFitsTrueNASAndAvoidsLongNameAlias(t *testing.T) {
+	first := ownedName("controller-1234567890", strings.Repeat("runner-a", 12))
+	second := ownedName("controller-1234567890", strings.Repeat("runner-a", 11)+"runner-b")
+	if len(first) > TrueNASAppNameMax || len(second) > TrueNASAppNameMax {
+		t.Fatalf("TrueNAS app-name limit exceeded: %q / %q", first, second)
+	}
+	if first == second {
+		t.Fatalf("distinct long names aliased after shortening: %q", first)
+	}
+	if !strings.HasPrefix(first, "garm-") {
+		t.Fatalf("owned name lost provider prefix: %q", first)
+	}
+}
+
+func TestCreateRejectsNameWithoutAlphanumericIdentity(t *testing.T) {
+	client := newFakeClient()
+	manager, _ := NewManager(client, "controller-1")
+	in := validBootstrap()
+	in.Name = "---___---"
+	if _, err := manager.Create(context.Background(), in); !errors.Is(err, ErrUnsupported) {
+		t.Fatalf("expected ErrUnsupported, got %v", err)
 	}
 }
 
