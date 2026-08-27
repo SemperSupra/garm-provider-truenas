@@ -7,7 +7,7 @@ import (
 	"testing"
 )
 
-func TestComposeWiresContainerBootstrapAndVolatileRunnerHome(t *testing.T) {
+func TestComposeWiresContainerBootstrapAndCredentialTmpfs(t *testing.T) {
 	spec := fixedSpec()
 	compose, err := composeConfig(spec)
 	if err != nil {
@@ -26,12 +26,28 @@ func TestComposeWiresContainerBootstrapAndVolatileRunnerHome(t *testing.T) {
 	if !ok {
 		t.Fatal("runner service missing")
 	}
-	command, _ := runner["command"].(string)
-	if command != containerBootstrapCommand() {
-		t.Fatal("runner command is not the container-native bootstrap")
+
+	rawEntrypoint, ok := runner["entrypoint"].([]any)
+	if !ok || len(rawEntrypoint) != 3 {
+		t.Fatalf("runner entrypoint is not the deterministic shell bootstrap: %#v", runner["entrypoint"])
 	}
-	if strings.Contains(command, spec.BootstrapToken) {
-		t.Fatal("bootstrap token was interpolated into the runner command")
+	entrypoint := make([]string, 0, len(rawEntrypoint))
+	for _, raw := range rawEntrypoint {
+		value, ok := raw.(string)
+		if !ok {
+			t.Fatalf("entrypoint value is not a string: %#v", raw)
+		}
+		entrypoint = append(entrypoint, value)
+	}
+	wantEntrypoint := []string{"/bin/sh", "-c", containerBootstrapCommand()}
+	if !reflect.DeepEqual(entrypoint, wantEntrypoint) {
+		t.Fatalf("unexpected bootstrap entrypoint: %#v", entrypoint)
+	}
+	if strings.Contains(entrypoint[2], spec.BootstrapToken) {
+		t.Fatal("bootstrap token was interpolated into the entrypoint script")
+	}
+	if _, ok := runner["command"]; ok {
+		t.Fatal("runner command must not override the deterministic bootstrap entrypoint")
 	}
 
 	environment, ok := runner["environment"].(map[string]any)
@@ -43,6 +59,11 @@ func TestComposeWiresContainerBootstrapAndVolatileRunnerHome(t *testing.T) {
 	}
 	if environment["GARM_CALLBACK_URL"] != spec.CallbackURL || environment["GARM_METADATA_URL"] != spec.MetadataURL {
 		t.Fatalf("GARM bootstrap endpoints missing: %#v", environment)
+	}
+	if environment["GARM_RUNNER_DOWNLOAD_URL"] != spec.RunnerDownloadURL ||
+		environment["GARM_RUNNER_FILENAME"] != spec.RunnerFilename ||
+		environment["GARM_RUNNER_SHA256"] != spec.RunnerSHA256 {
+		t.Fatalf("verified runner tool contract missing from environment: %#v", environment)
 	}
 
 	rawTmpfs, ok := runner["tmpfs"].([]any)
@@ -57,16 +78,18 @@ func TestComposeWiresContainerBootstrapAndVolatileRunnerHome(t *testing.T) {
 		}
 		tmpfs = append(tmpfs, value)
 	}
-	want := []string{
-		"/home/runner/actions-runner:rw,nosuid,nodev,uid=1001,gid=1001,mode=0700",
-		"/home/runner/_work:rw,nosuid,nodev,uid=1001,gid=1001,mode=0700",
+	wantTmpfs := []string{
+		"/run/garm-jit:rw,nosuid,nodev,noexec,uid=1001,gid=1001,mode=0700",
 	}
-	if !reflect.DeepEqual(tmpfs, want) {
+	if !reflect.DeepEqual(tmpfs, wantTmpfs) {
 		t.Fatalf("unexpected tmpfs profile: %#v", tmpfs)
 	}
-	for _, mount := range tmpfs {
-		if strings.Contains(mount, "noexec") {
-			t.Fatalf("Actions work/runner filesystem must remain executable: %s", mount)
+	if !strings.Contains(tmpfs[0], "noexec") {
+		t.Fatalf("credential tmpfs must be non-executable: %s", tmpfs[0])
+	}
+	for _, forbidden := range []string{"/home/runner/actions-runner", "/home/runner/_work"} {
+		if strings.Contains(tmpfs[0], forbidden) {
+			t.Fatalf("runner/work tree must remain on the executable container layer: %s", tmpfs[0])
 		}
 	}
 }
