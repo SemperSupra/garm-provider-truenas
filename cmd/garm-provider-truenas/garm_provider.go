@@ -28,11 +28,12 @@ var (
 var Version = "v0.0.0-dev"
 
 type trueNASConfig struct {
-	Host               string `json:"host"`
-	Username           string `json:"username"`
-	APIKeyEnv          string `json:"api_key_env"`
-	Port               int    `json:"port,omitempty"`
-	InsecureSkipVerify bool   `json:"insecure_skip_verify,omitempty"`
+	Host                string `json:"host"`
+	Username            string `json:"username"`
+	APIKeyEnv           string `json:"api_key_env"`
+	Port                int    `json:"port,omitempty"`
+	InsecureSkipVerify  bool   `json:"insecure_skip_verify,omitempty"`
+	CallbackHostGateway bool   `json:"callback_host_gateway,omitempty"`
 }
 
 type config struct {
@@ -78,11 +79,12 @@ func (p *externalProvider) manager(ctx context.Context) (*provider.Manager, func
 			return nil, nil, fmt.Errorf("TrueNAS API key environment variable %q is empty", apiKeyEnv)
 		}
 		store, closer, err := truenasstore.Connect(ctx, truenasstore.Config{
-			Host:               p.cfg.TrueNAS.Host,
-			Username:           p.cfg.TrueNAS.Username,
-			APIKey:             apiKey,
-			Port:               p.cfg.TrueNAS.Port,
-			InsecureSkipVerify: false,
+			Host:                p.cfg.TrueNAS.Host,
+			Username:            p.cfg.TrueNAS.Username,
+			APIKey:              apiKey,
+			Port:                p.cfg.TrueNAS.Port,
+			InsecureSkipVerify:  false,
+			CallbackHostGateway: p.cfg.TrueNAS.CallbackHostGateway,
 		})
 		if err != nil {
 			return nil, nil, err
@@ -451,7 +453,8 @@ const providerConfigSchema = `{
         "username": {"type": "string", "minLength": 1},
         "api_key_env": {"type": "string", "minLength": 1, "default": "TRUENAS_API_KEY"},
         "port": {"type": "integer", "minimum": 0, "maximum": 65535},
-        "insecure_skip_verify": {"const": false}
+        "insecure_skip_verify": {"const": false},
+        "callback_host_gateway": {"type": "boolean", "default": false}
       }
     }
   },
