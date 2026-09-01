@@ -26,11 +26,12 @@ const (
 var errUnmanaged = errors.New("app is not managed by garm-provider-truenas")
 
 type Config struct {
-	Host               string
-	Username           string
-	APIKey             string
-	Port               int
-	InsecureSkipVerify bool
+	Host                string
+	Username            string
+	APIKey              string
+	Port                int
+	InsecureSkipVerify  bool
+	CallbackHostGateway bool
 }
 
 type appService interface {
@@ -44,8 +45,9 @@ type jobCaller interface {
 }
 
 type Store struct {
-	apps   appService
-	caller jobCaller
+	apps                appService
+	caller              jobCaller
+	callbackHostGateway bool
 }
 
 func Connect(ctx context.Context, cfg Config) (*Store, func() error, error) {
@@ -78,7 +80,9 @@ func Connect(ctx context.Context, cfg Config) (*Store, func() error, error) {
 	}
 
 	apps := truenas.NewAppService(ws, ws.Version())
-	return New(apps, ws), ws.Close, nil
+	store := New(apps, ws)
+	store.callbackHostGateway = cfg.CallbackHostGateway
+	return store, ws.Close, nil
 }
 
 func New(apps appService, caller jobCaller) *Store {
@@ -90,6 +94,10 @@ func (s *Store) CreateApp(ctx context.Context, spec provider.AppSpec) (provider.
 		return provider.App{}, errors.New("TrueNAS app service is required")
 	}
 	compose, err := composeConfig(spec)
+	if err != nil {
+		return provider.App{}, err
+	}
+	compose, err = applyCallbackHostGateway(compose, spec, s.callbackHostGateway)
 	if err != nil {
 		return provider.App{}, err
 	}
@@ -118,7 +126,13 @@ func (s *Store) GetApp(ctx context.Context, name string) (provider.App, error) {
 	if errors.Is(err, errUnmanaged) {
 		return provider.App{}, provider.ErrForeign
 	}
-	return decoded, err
+	if err != nil {
+		return provider.App{}, err
+	}
+	if err := validateCallbackHostGatewayAppConfig(*app, s.callbackHostGateway); err != nil {
+		return provider.App{}, fmt.Errorf("managed app callback host-gateway policy mismatch: %w", err)
+	}
+	return decoded, nil
 }
 
 func (s *Store) ListApps(ctx context.Context) ([]provider.App, error) {
@@ -148,6 +162,9 @@ func (s *Store) ListApps(ctx context.Context) ([]provider.App, error) {
 		}
 		if err != nil {
 			return nil, fmt.Errorf("decode managed app %q: %w", summary.Name, err)
+		}
+		if err := validateCallbackHostGatewayAppConfig(*full, s.callbackHostGateway); err != nil {
+			return nil, fmt.Errorf("validate managed app %q callback host-gateway policy: %w", summary.Name, err)
 		}
 		out = append(out, decoded)
 	}
