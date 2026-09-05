@@ -245,7 +245,7 @@ func TestListFailsClosedForPlausibleManagedNameWithMalformedConfig(t *testing.T)
 		},
 		GetAppWithConfigFunc: func(_ context.Context, name string) (*truenas.App, error) {
 			return &truenas.App{
-				Name: name,
+				Name:  name,
 				State: "RUNNING",
 				Config: map[string]any{
 					"services": map[string]any{
