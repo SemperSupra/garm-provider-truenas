@@ -183,6 +183,22 @@ func TestGetRejectsUnmanagedNameCollision(t *testing.T) {
 	}
 }
 
+func TestPlausibleManagedAppNameMatchesOnlyProviderNameShape(t *testing.T) {
+	cases := map[string]bool{
+		"plex":                         false,
+		"garm-controller":              false,
+		"garm--runner":                 false,
+		"garm-controller-":             false,
+		"garm-controller-runner":       true,
+		"garm-controller-123-runner-1": true,
+	}
+	for name, want := range cases {
+		if got := plausibleManagedAppName(name); got != want {
+			t.Fatalf("plausibleManagedAppName(%q)=%v want %v", name, got, want)
+		}
+	}
+}
+
 func TestListSkipsNonGARMAppsAndKeepsForeignManagedAppsForManagerFiltering(t *testing.T) {
 	local := fixedSpec()
 	foreign := fixedSpec()
@@ -196,11 +212,15 @@ func TestListSkipsNonGARMAppsAndKeepsForeignManagedAppsForManagerFiltering(t *te
 		ListAppsFunc: func(context.Context) ([]truenas.App, error) {
 			return []truenas.App{
 				{Name: "plex", State: "RUNNING"},
+				{Name: "garm-controller", State: "RUNNING"},
 				{Name: foreign.Name, State: "STOPPED"},
 				{Name: local.Name, State: "RUNNING"},
 			}, nil
 		},
 		GetAppWithConfigFunc: func(_ context.Context, name string) (*truenas.App, error) {
+			if name == "garm-controller" {
+				t.Fatal("garm-controller cannot be a provider-created runner name and must not be decoded")
+			}
 			return appFromCompose(name, "STOPPED", configs[name]), nil
 		},
 	}
@@ -215,6 +235,29 @@ func TestListSkipsNonGARMAppsAndKeepsForeignManagedAppsForManagerFiltering(t *te
 	controllers := []string{got[0].Spec.ControllerID, got[1].Spec.ControllerID}
 	if !reflect.DeepEqual(controllers, []string{"controller-123", "other-controller"}) && !reflect.DeepEqual(controllers, []string{"other-controller", "controller-123"}) {
 		t.Fatalf("unexpected controllers: %#v", controllers)
+	}
+}
+
+func TestListFailsClosedForPlausibleManagedNameWithMalformedConfig(t *testing.T) {
+	apps := &truenas.MockAppService{
+		ListAppsFunc: func(context.Context) ([]truenas.App, error) {
+			return []truenas.App{{Name: "garm-foreign-runner", State: "RUNNING"}}, nil
+		},
+		GetAppWithConfigFunc: func(_ context.Context, name string) (*truenas.App, error) {
+			return &truenas.App{
+				Name:  name,
+				State: "RUNNING",
+				Config: map[string]any{
+					"services": map[string]any{
+						"not-runner": map[string]any{"image": "foreign"},
+					},
+				},
+			}, nil
+		},
+	}
+	store := New(apps, &tnclient.MockClient{})
+	if _, err := store.ListApps(context.Background()); err == nil || !strings.Contains(err.Error(), "no runner service") {
+		t.Fatalf("plausible managed-name drift must fail closed, got %v", err)
 	}
 }
 

@@ -135,6 +135,15 @@ func (s *Store) GetApp(ctx context.Context, name string) (provider.App, error) {
 	return decoded, nil
 }
 
+func plausibleManagedAppName(name string) bool {
+	if !strings.HasPrefix(name, "garm-") {
+		return false
+	}
+	remainder := strings.TrimPrefix(name, "garm-")
+	controller, requested, ok := strings.Cut(remainder, "-")
+	return ok && strings.TrimSpace(controller) != "" && strings.TrimSpace(requested) != ""
+}
+
 func (s *Store) ListApps(ctx context.Context) ([]provider.App, error) {
 	if s == nil || s.apps == nil {
 		return nil, errors.New("TrueNAS app service is required")
@@ -146,7 +155,7 @@ func (s *Store) ListApps(ctx context.Context) ([]provider.App, error) {
 	sort.Slice(apps, func(i, j int) bool { return apps[i].Name < apps[j].Name })
 	out := make([]provider.App, 0, len(apps))
 	for _, summary := range apps {
-		if !strings.HasPrefix(summary.Name, "garm-") {
+		if !plausibleManagedAppName(summary.Name) {
 			continue
 		}
 		full, err := s.apps.GetAppWithConfig(ctx, summary.Name)
