@@ -24,6 +24,7 @@ func main() {
 }
 
 func runCLI(ctx context.Context, stdout, stderr io.Writer) int {
+	ensureScaleSetLifecyclePoolPlaceholder()
 	executionEnv, err := execution.GetEnvironment()
 	if err != nil {
 		fmt.Fprintln(stderr, err)
