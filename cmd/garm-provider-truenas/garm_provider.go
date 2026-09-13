@@ -305,7 +305,7 @@ func validateBootstrapContract(bootstrap garmParams.BootstrapInstance) error {
 	if bootstrap.UserDataOptions.DisableUpdatesOnBoot || bootstrap.UserDataOptions.EnableBootDebug || len(bootstrap.UserDataOptions.ExtraPackages) != 0 {
 		return errors.New("VM/cloud-init user-data options are not supported by the container profile")
 	}
-	if err := validateEmptyExtraSpecs(bootstrap.ExtraSpecs); err != nil {
+	if err := validateCreateExtraSpecs(bootstrap.ExtraSpecs); err != nil {
 		return err
 	}
 	return nil
@@ -333,6 +333,35 @@ func validateEmptyExtraSpecs(raw []byte) error {
 	}
 	if len(obj) != 0 {
 		return errors.New("extra specs are not supported by the fixed MVP profile")
+	}
+	return nil
+}
+
+func validateCreateExtraSpecs(raw []byte) error {
+	trimmed := strings.TrimSpace(string(raw))
+	if trimmed == "" || trimmed == "null" {
+		return nil
+	}
+	var obj map[string]json.RawMessage
+	if err := json.Unmarshal(raw, &obj); err != nil {
+		return fmt.Errorf("extra specs must be a JSON object: %w", err)
+	}
+	if len(obj) == 0 {
+		return nil
+	}
+	if len(obj) != 1 {
+		return errors.New("create extra specs may only contain GARM runner_install_template compatibility metadata")
+	}
+	rawTemplate, ok := obj["runner_install_template"]
+	if !ok {
+		return errors.New("create extra specs may only contain GARM runner_install_template compatibility metadata")
+	}
+	var template string
+	if err := json.Unmarshal(rawTemplate, &template); err != nil {
+		return errors.New("GARM runner_install_template compatibility metadata must be a string")
+	}
+	if strings.TrimSpace(template) == "" {
+		return errors.New("GARM runner_install_template compatibility metadata must not be empty")
 	}
 	return nil
 }
