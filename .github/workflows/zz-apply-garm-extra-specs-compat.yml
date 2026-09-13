@@ -1,0 +1,36 @@
+name: One-time apply GARM extra-spec compatibility patch
+
+on:
+  push:
+    branches:
+      - fix/garm-runner-install-template-compat
+    paths:
+      - 'tools/maintenance/apply-garm-extra-specs-compat.py'
+      - '.github/workflows/zz-apply-garm-extra-specs-compat.yml'
+
+permissions:
+  contents: write
+
+jobs:
+  patch:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: fix/garm-runner-install-template-compat
+          fetch-depth: 0
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+      - name: Apply bounded compatibility patch
+        run: python3 tools/maintenance/apply-garm-extra-specs-compat.py
+      - name: Format and test
+        run: |
+          gofmt -w cmd/garm-provider-truenas/garm_provider.go cmd/garm-provider-truenas/extra_specs_compat_test.go
+          go test ./...
+      - name: Commit source and regression tests
+        run: |
+          git add cmd/garm-provider-truenas/garm_provider.go cmd/garm-provider-truenas/extra_specs_compat_test.go
+          git -c user.name='Provider Compatibility Patch' -c user.email='provider-compat@localhost' commit -m 'Accept GARM runner install wrapper metadata at create time'
+          git push origin HEAD:fix/garm-runner-install-template-compat
