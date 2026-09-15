@@ -1,5 +1,7 @@
 package truenasstore
 
+import "strings"
+
 // containerBootstrapScript adapts GARM's JIT metadata contract to a
 // container-native runner lifecycle. The pinned actions-runner image provides
 // the tested Ubuntu/runtime dependency base, but the runner executable tree is
@@ -216,6 +218,17 @@ runner_pid=""
 exit "$runner_rc"
 `
 
+// containerBootstrapCommand returns the Compose-safe representation of the
+// runtime shell program. Compose interpolates dollar-prefixed expressions in
+// scalar values before the container is created; doubling each dollar causes
+// Compose to pass one literal dollar through so the shell expands variables at
+// runtime inside the runner container instead of against the TrueNAS host.
 func containerBootstrapCommand() string {
+	return strings.ReplaceAll(containerBootstrapScript, "$", "$$")
+}
+
+// containerBootstrapRuntimeCommand is the raw shell program used by unit tests
+// that execute the bootstrap directly without a Compose interpolation layer.
+func containerBootstrapRuntimeCommand() string {
 	return containerBootstrapScript
 }
