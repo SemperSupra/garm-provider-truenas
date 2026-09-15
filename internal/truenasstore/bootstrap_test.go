@@ -60,7 +60,7 @@ func TestContainerBootstrapDownloadsVerifiedPayloadAndCleansCredentials(t *testi
 	}))
 	defer server.Close()
 
-	cmd := exec.CommandContext(context.Background(), "bash", "-c", containerBootstrapCommand())
+	cmd := exec.CommandContext(context.Background(), "bash", "-c", containerBootstrapRuntimeCommand())
 	cmd.Env = append(os.Environ(),
 		"GARM_CALLBACK_URL="+server.URL+"/callback",
 		"GARM_METADATA_URL="+server.URL+"/metadata",
@@ -137,7 +137,7 @@ func TestContainerBootstrapFailsClosedOnMetadataAuthFailure(t *testing.T) {
 
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
-	cmd := exec.CommandContext(ctx, "bash", "-c", containerBootstrapCommand())
+	cmd := exec.CommandContext(ctx, "bash", "-c", containerBootstrapRuntimeCommand())
 	cmd.Env = append(os.Environ(),
 		"GARM_CALLBACK_URL="+server.URL+"/callback",
 		"GARM_METADATA_URL="+server.URL+"/metadata",
@@ -175,7 +175,7 @@ func TestContainerBootstrapRejectsRunnerChecksumMismatch(t *testing.T) {
 	}))
 	defer server.Close()
 
-	cmd := exec.CommandContext(context.Background(), "bash", "-c", containerBootstrapCommand())
+	cmd := exec.CommandContext(context.Background(), "bash", "-c", containerBootstrapRuntimeCommand())
 	cmd.Env = append(os.Environ(),
 		"GARM_CALLBACK_URL="+server.URL+"/callback",
 		"GARM_METADATA_URL="+server.URL+"/metadata",
@@ -195,7 +195,7 @@ func TestContainerBootstrapRejectsRunnerChecksumMismatch(t *testing.T) {
 }
 
 func TestContainerBootstrapScriptDoesNotEmbedSecretValues(t *testing.T) {
-	script := containerBootstrapCommand()
+	script := containerBootstrapRuntimeCommand()
 	for _, forbidden := range []string{"stage4-test-token", "ephemeral-test-token"} {
 		if strings.Contains(script, forbidden) {
 			t.Fatalf("bootstrap script contains secret fixture %q", forbidden)
