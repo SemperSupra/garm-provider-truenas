@@ -154,6 +154,141 @@ func TestComposeRejectsProfileEscape(t *testing.T) {
 	}
 }
 
+
+func fixedComposeDoc(t *testing.T) map[string]any {
+	t.Helper()
+	compose, err := composeConfig(fixedSpec())
+	if err != nil {
+		t.Fatal(err)
+	}
+	var doc map[string]any
+	if err := json.Unmarshal([]byte(compose), &doc); err != nil {
+		t.Fatal(err)
+	}
+	return doc
+}
+
+func encodeComposeDoc(t *testing.T, doc map[string]any) string {
+	t.Helper()
+	raw, err := json.Marshal(doc)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return string(raw)
+}
+
+func runnerService(t *testing.T, doc map[string]any) map[string]any {
+	t.Helper()
+	services := doc["services"].(map[string]any)
+	return services["runner"].(map[string]any)
+}
+
+func TestDecodeAppRevalidatesEntireRealizedProfile(t *testing.T) {
+	baseline := fixedComposeDoc(t)
+	got, err := decodeApp(*appFromCompose(fixedSpec().Name, "STOPPED", encodeComposeDoc(t, baseline)))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got.Spec.CallbackURL != fixedSpec().CallbackURL || got.Spec.MetadataURL != fixedSpec().MetadataURL {
+		t.Fatalf("callback/metadata did not round-trip from realized Compose: %#v", got.Spec)
+	}
+
+	tests := map[string]func(map[string]any){
+		"extra-service": func(doc map[string]any) {
+			doc["services"].(map[string]any)["sidecar"] = map[string]any{"image": "busybox:latest"}
+		},
+		"unexpected-field": func(doc map[string]any) {
+			runnerService(t, doc)["privileged"] = true
+		},
+		"image": func(doc map[string]any) {
+			runnerService(t, doc)["image"] = "ubuntu:latest"
+		},
+		"user": func(doc map[string]any) {
+			runnerService(t, doc)["user"] = "0:0"
+		},
+		"restart": func(doc map[string]any) {
+			runnerService(t, doc)["restart"] = "always"
+		},
+		"entrypoint": func(doc map[string]any) {
+			runnerService(t, doc)["entrypoint"] = []any{"/bin/sh", "-c", "sleep infinity"}
+		},
+		"capabilities": func(doc map[string]any) {
+			runnerService(t, doc)["cap_drop"] = []any{}
+		},
+		"security-opt": func(doc map[string]any) {
+			runnerService(t, doc)["security_opt"] = []any{}
+		},
+		"cpu": func(doc map[string]any) {
+			runnerService(t, doc)["cpus"] = float64(provider.GeneralCPU + 1)
+		},
+		"memory": func(doc map[string]any) {
+			runnerService(t, doc)["mem_limit"] = float64(provider.GeneralMemoryBytes * 2)
+		},
+		"tmpfs": func(doc map[string]any) {
+			runnerService(t, doc)["tmpfs"] = []any{"/run/garm-jit:rw"}
+		},
+		"host-mount": func(doc map[string]any) {
+			runnerService(t, doc)["volumes"] = []any{"/var/run/docker.sock:/var/run/docker.sock"}
+		},
+		"extra-label": func(doc map[string]any) {
+			runnerService(t, doc)["labels"].(map[string]any)["user.injected"] = "true"
+		},
+		"profile": func(doc map[string]any) {
+			runnerService(t, doc)["labels"].(map[string]any)[labelProfile] = "other-profile"
+		},
+		"callback-empty": func(doc map[string]any) {
+			runnerService(t, doc)["environment"].(map[string]any)["GARM_CALLBACK_URL"] = ""
+		},
+		"metadata-empty": func(doc map[string]any) {
+			runnerService(t, doc)["environment"].(map[string]any)["GARM_METADATA_URL"] = ""
+		},
+		"token-empty": func(doc map[string]any) {
+			runnerService(t, doc)["environment"].(map[string]any)["GARM_INSTANCE_TOKEN"] = ""
+		},
+		"runner-url": func(doc map[string]any) {
+			runnerService(t, doc)["environment"].(map[string]any)["GARM_RUNNER_DOWNLOAD_URL"] = "https://example.invalid/runner.tgz"
+		},
+		"runner-filename": func(doc map[string]any) {
+			runnerService(t, doc)["environment"].(map[string]any)["GARM_RUNNER_FILENAME"] = "runner.tgz"
+		},
+		"runner-sha": func(doc map[string]any) {
+			runnerService(t, doc)["environment"].(map[string]any)["GARM_RUNNER_SHA256"] = strings.Repeat("0", 64)
+		},
+		"extra-environment": func(doc map[string]any) {
+			runnerService(t, doc)["environment"].(map[string]any)["UNQUALIFIED"] = "true"
+		},
+	}
+
+	for name, mutate := range tests {
+		t.Run(name, func(t *testing.T) {
+			doc := fixedComposeDoc(t)
+			mutate(doc)
+			_, err := decodeApp(*appFromCompose(fixedSpec().Name, "STOPPED", encodeComposeDoc(t, doc)))
+			if !errors.Is(err, provider.ErrManagedDrift) {
+				t.Fatalf("expected managed drift classification, got %v", err)
+			}
+		})
+	}
+}
+
+func TestDecodeAppRequiresCallbackGatewayFieldLabelConsistency(t *testing.T) {
+	doc := fixedComposeDoc(t)
+	runner := runnerService(t, doc)
+	runner["extra_hosts"] = []any{"garm.example.invalid:host-gateway"}
+	_, err := decodeApp(*appFromCompose(fixedSpec().Name, "STOPPED", encodeComposeDoc(t, doc)))
+	if !errors.Is(err, provider.ErrManagedDrift) {
+		t.Fatalf("extra_hosts without provider ownership label must fail managed drift, got %v", err)
+	}
+
+	doc = fixedComposeDoc(t)
+	runner = runnerService(t, doc)
+	runner["labels"].(map[string]any)[labelCallbackHostGateway] = "true"
+	_, err = decodeApp(*appFromCompose(fixedSpec().Name, "STOPPED", encodeComposeDoc(t, doc)))
+	if !errors.Is(err, provider.ErrManagedDrift) {
+		t.Fatalf("gateway ownership label without extra_hosts must fail managed drift, got %v", err)
+	}
+}
+
 func TestUnknownTrueNASStateFailsClosedAsActive(t *testing.T) {
 	if got := mapState("MYSTERY"); got != provider.StateDeploying {
 		t.Fatalf("unknown state must map to fail-closed active state, got %s", got)
