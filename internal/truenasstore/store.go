@@ -15,12 +15,13 @@ import (
 )
 
 const (
-	labelManaged    = "io.sempersupra.garm.managed"
-	labelSchema     = "io.sempersupra.garm.schema"
-	labelController = "io.sempersupra.garm.controller-id"
-	labelPool       = "io.sempersupra.garm.pool-id"
-	labelProfile    = "io.sempersupra.garm.execution-profile"
-	metadataSchema  = "1"
+	labelManaged         = "io.sempersupra.garm.managed"
+	labelSchema          = "io.sempersupra.garm.schema"
+	labelController      = "io.sempersupra.garm.controller-id"
+	labelPool            = "io.sempersupra.garm.pool-id"
+	labelProfile         = "io.sempersupra.garm.execution-profile"
+	metadataSchema       = "1"
+	credentialTmpfsMount = "/run/garm-jit:rw,nosuid,nodev,noexec,uid=1001,gid=1001,mode=0700"
 )
 
 var errUnmanaged = errors.New("app is not managed by garm-provider-truenas")
@@ -243,7 +244,7 @@ func composeConfig(spec provider.AppSpec) (string, error) {
 				// for the JIT credential bytes. Runner binaries and _work stay on
 				// the one-job container writable layer so Actions can execute files.
 				"tmpfs": []string{
-					"/run/garm-jit:rw,nosuid,nodev,noexec,uid=1001,gid=1001,mode=0700",
+					credentialTmpfsMount,
 				},
 				"labels": labels,
 				"environment": map[string]string{
@@ -262,6 +263,160 @@ func composeConfig(spec provider.AppSpec) (string, error) {
 		return "", fmt.Errorf("encode fixed runner Compose: %w", err)
 	}
 	return string(encoded), nil
+}
+
+func managedDriftf(format string, args ...any) error {
+	return fmt.Errorf("%s: %w", fmt.Sprintf(format, args...), provider.ErrManagedDrift)
+}
+
+func integerValue(value any) (int64, bool) {
+	switch n := value.(type) {
+	case int:
+		return int64(n), true
+	case int32:
+		return int64(n), true
+	case int64:
+		return n, true
+	case uint:
+		if uint64(n) > uint64(^uint64(0)>>1) {
+			return 0, false
+		}
+		return int64(n), true
+	case uint32:
+		return int64(n), true
+	case uint64:
+		if n > uint64(^uint64(0)>>1) {
+			return 0, false
+		}
+		return int64(n), true
+	case float64:
+		i := int64(n)
+		return i, float64(i) == n
+	case float32:
+		i := int64(n)
+		return i, float32(i) == n
+	case json.Number:
+		i, err := n.Int64()
+		return i, err == nil
+	default:
+		return 0, false
+	}
+}
+
+func validateFixedRunnerService(runner map[string]any, labels map[string]string) (map[string]string, error) {
+	requiredKeys := map[string]bool{
+		"image": true, "user": true, "restart": true, "entrypoint": true,
+		"cap_drop": true, "security_opt": true, "cpus": true, "mem_limit": true,
+		"tmpfs": true, "labels": true, "environment": true,
+	}
+	allowedKeys := map[string]bool{}
+	for key := range requiredKeys {
+		allowedKeys[key] = true
+	}
+	allowedKeys["extra_hosts"] = true
+	for key := range runner {
+		if !allowedKeys[key] {
+			return nil, managedDriftf("runner service contains unexpected field %q", key)
+		}
+	}
+	for key := range requiredKeys {
+		if _, ok := runner[key]; !ok {
+			return nil, managedDriftf("runner service is missing required field %q", key)
+		}
+	}
+
+	image, ok := runner["image"].(string)
+	if !ok || image != provider.RunnerImage {
+		return nil, managedDriftf("runner image drifted")
+	}
+	user, ok := runner["user"].(string)
+	if !ok || user != "1001:1001" {
+		return nil, managedDriftf("runner user drifted")
+	}
+	restart, ok := runner["restart"].(string)
+	if !ok || restart != "no" {
+		return nil, managedDriftf("runner restart policy drifted")
+	}
+
+	entrypoint, err := stringList(runner["entrypoint"])
+	if err != nil || len(entrypoint) != 3 || entrypoint[0] != "/bin/sh" || entrypoint[1] != "-c" || entrypoint[2] != containerBootstrapCommand() {
+		return nil, managedDriftf("runner bootstrap entrypoint drifted")
+	}
+	caps, err := stringList(runner["cap_drop"])
+	if err != nil || len(caps) != 1 || caps[0] != "ALL" {
+		return nil, managedDriftf("runner capability-drop profile drifted")
+	}
+	securityOpts, err := stringList(runner["security_opt"])
+	if err != nil || len(securityOpts) != 1 || securityOpts[0] != "no-new-privileges:true" {
+		return nil, managedDriftf("runner security options drifted")
+	}
+	cpu, ok := integerValue(runner["cpus"])
+	if !ok || cpu != int64(provider.GeneralCPU) {
+		return nil, managedDriftf("runner CPU limit drifted")
+	}
+	memory, ok := integerValue(runner["mem_limit"])
+	if !ok || memory != provider.GeneralMemoryBytes {
+		return nil, managedDriftf("runner memory limit drifted")
+	}
+	tmpfs, err := stringList(runner["tmpfs"])
+	if err != nil || len(tmpfs) != 1 || tmpfs[0] != credentialTmpfsMount {
+		return nil, managedDriftf("runner credential tmpfs drifted")
+	}
+
+	allowedLabels := map[string]bool{
+		labelManaged:             true,
+		labelSchema:              true,
+		labelController:          true,
+		labelPool:                true,
+		labelProfile:             true,
+		labelCallbackHostGateway: true,
+	}
+	for key := range labels {
+		if !allowedLabels[key] {
+			return nil, managedDriftf("runner carries unexpected provider label %q", key)
+		}
+	}
+	if value, present := labels[labelCallbackHostGateway]; present && value != "true" {
+		return nil, managedDriftf("callback host-gateway ownership label drifted")
+	}
+	_, extraHostsPresent := runner["extra_hosts"]
+	_, gatewayLabelPresent := labels[labelCallbackHostGateway]
+	if extraHostsPresent != gatewayLabelPresent {
+		return nil, managedDriftf("callback host-gateway field/label presence drifted")
+	}
+
+	environment, err := stringMap(runner["environment"])
+	if err != nil {
+		return nil, managedDriftf("runner environment is unreadable")
+	}
+	requiredEnvironment := map[string]bool{
+		"GARM_CALLBACK_URL":        true,
+		"GARM_METADATA_URL":        true,
+		"GARM_INSTANCE_TOKEN":      true,
+		"GARM_RUNNER_DOWNLOAD_URL": true,
+		"GARM_RUNNER_FILENAME":     true,
+		"GARM_RUNNER_SHA256":       true,
+	}
+	if len(environment) != len(requiredEnvironment) {
+		return nil, managedDriftf("runner environment field count drifted")
+	}
+	for key := range requiredEnvironment {
+		if _, ok := environment[key]; !ok {
+			return nil, managedDriftf("runner environment is missing %s", key)
+		}
+	}
+	if strings.TrimSpace(environment["GARM_CALLBACK_URL"]) == "" ||
+		strings.TrimSpace(environment["GARM_METADATA_URL"]) == "" ||
+		strings.TrimSpace(environment["GARM_INSTANCE_TOKEN"]) == "" {
+		return nil, managedDriftf("runner bootstrap callback/metadata/token contract drifted")
+	}
+	if environment["GARM_RUNNER_DOWNLOAD_URL"] != provider.RunnerToolURL ||
+		environment["GARM_RUNNER_FILENAME"] != provider.RunnerToolFilename ||
+		environment["GARM_RUNNER_SHA256"] != provider.RunnerToolSHA256 {
+		return nil, managedDriftf("runner payload metadata drifted")
+	}
+
+	return environment, nil
 }
 
 func decodeApp(app truenas.App) (provider.App, error) {
@@ -284,24 +439,31 @@ func decodeApp(app truenas.App) (provider.App, error) {
 	if labels[labelManaged] != "true" {
 		return provider.App{}, errUnmanaged
 	}
+	if len(services) != 1 {
+		return provider.App{}, managedDriftf("managed app contains unexpected services")
+	}
 	if labels[labelSchema] != metadataSchema {
-		return provider.App{}, fmt.Errorf("unsupported ownership metadata schema %q", labels[labelSchema])
+		return provider.App{}, managedDriftf("unsupported ownership metadata schema %q", labels[labelSchema])
 	}
 	controllerID := strings.TrimSpace(labels[labelController])
 	poolID := strings.TrimSpace(labels[labelPool])
 	profile := strings.TrimSpace(labels[labelProfile])
 	if controllerID == "" || poolID == "" || profile == "" {
-		return provider.App{}, errors.New("managed app ownership metadata is incomplete")
+		return provider.App{}, managedDriftf("managed app ownership metadata is incomplete")
 	}
-	image, _ := runner["image"].(string)
-	if image != provider.RunnerImage || profile != provider.FlavorLinuxGeneral {
-		return provider.App{}, errors.New("managed app drifted from the fixed image/profile")
+	if profile != provider.FlavorLinuxGeneral {
+		return provider.App{}, managedDriftf("managed app execution profile drifted")
+	}
+
+	environment, err := validateFixedRunnerService(runner, labels)
+	if err != nil {
+		return provider.App{}, err
 	}
 
 	return provider.App{
 		Spec: provider.AppSpec{
 			Name:              app.Name,
-			Image:             image,
+			Image:             provider.RunnerImage,
 			ControllerID:      controllerID,
 			PoolID:            poolID,
 			CPU:               provider.GeneralCPU,
@@ -313,9 +475,11 @@ func decodeApp(app truenas.App) (provider.App, error) {
 			CredentialTmpfs:   true,
 			HostMounts:        []string{},
 			DockerSocket:      false,
-			RunnerDownloadURL: provider.RunnerToolURL,
-			RunnerFilename:    provider.RunnerToolFilename,
-			RunnerSHA256:      provider.RunnerToolSHA256,
+			CallbackURL:       environment["GARM_CALLBACK_URL"],
+			MetadataURL:       environment["GARM_METADATA_URL"],
+			RunnerDownloadURL: environment["GARM_RUNNER_DOWNLOAD_URL"],
+			RunnerFilename:    environment["GARM_RUNNER_FILENAME"],
+			RunnerSHA256:      environment["GARM_RUNNER_SHA256"],
 			ExecutionProfile:  profile,
 		},
 		State: mapState(app.State),

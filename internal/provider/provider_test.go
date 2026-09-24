@@ -11,6 +11,7 @@ type fakeClient struct {
 	apps        map[string]App
 	createCount int
 	deleteCount int
+	getErr      error
 }
 
 func newFakeClient() *fakeClient { return &fakeClient{apps: map[string]App{}} }
@@ -23,6 +24,9 @@ func (f *fakeClient) CreateApp(_ context.Context, spec AppSpec) (App, error) {
 }
 
 func (f *fakeClient) GetApp(_ context.Context, name string) (App, error) {
+	if f.getErr != nil {
+		return App{}, f.getErr
+	}
 	app, ok := f.apps[name]
 	if !ok {
 		return App{}, ErrNotFound
@@ -143,6 +147,18 @@ func TestDeleteRefusesActiveRunner(t *testing.T) {
 	}
 	if client.deleteCount != 0 {
 		t.Fatalf("active runner was deleted")
+	}
+}
+
+func TestDeleteRefusesManagedRuntimeDriftWithoutCallingDelete(t *testing.T) {
+	client := newFakeClient()
+	client.getErr = ErrManagedDrift
+	manager, _ := NewManager(client, "controller-1")
+	if err := manager.Delete(context.Background(), "garm-controller-1-runner"); !errors.Is(err, ErrManagedDrift) {
+		t.Fatalf("expected ErrManagedDrift, got %v", err)
+	}
+	if client.deleteCount != 0 {
+		t.Fatalf("drifted managed runner reached delete authority")
 	}
 }
 

@@ -15,6 +15,7 @@ var (
 	ErrForeign         = errors.New("instance is not owned by this controller")
 	ErrUnsupported     = errors.New("unsupported execution request")
 	ErrUnsafeOperation = errors.New("operation is unsafe for one-job ephemeral runners")
+	ErrManagedDrift    = errors.New("managed instance runtime profile is invalid")
 )
 
 const (
