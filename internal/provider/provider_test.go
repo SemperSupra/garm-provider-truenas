@@ -150,7 +150,6 @@ func TestDeleteRefusesActiveRunner(t *testing.T) {
 	}
 }
 
-
 func TestDeleteRefusesManagedRuntimeDriftWithoutCallingDelete(t *testing.T) {
 	client := newFakeClient()
 	client.getErr = ErrManagedDrift
