@@ -154,7 +154,6 @@ func TestComposeRejectsProfileEscape(t *testing.T) {
 	}
 }
 
-
 func fixedComposeDoc(t *testing.T) map[string]any {
 	t.Helper()
 	compose, err := composeConfig(fixedSpec())
