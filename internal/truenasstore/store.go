@@ -15,13 +15,13 @@ import (
 )
 
 const (
-	labelManaged    = "io.sempersupra.garm.managed"
-	labelSchema     = "io.sempersupra.garm.schema"
-	labelController = "io.sempersupra.garm.controller-id"
-	labelPool       = "io.sempersupra.garm.pool-id"
-	labelProfile    = "io.sempersupra.garm.execution-profile"
-	metadataSchema         = "1"
-	credentialTmpfsMount  = "/run/garm-jit:rw,nosuid,nodev,noexec,uid=1001,gid=1001,mode=0700"
+	labelManaged         = "io.sempersupra.garm.managed"
+	labelSchema          = "io.sempersupra.garm.schema"
+	labelController      = "io.sempersupra.garm.controller-id"
+	labelPool            = "io.sempersupra.garm.pool-id"
+	labelProfile         = "io.sempersupra.garm.execution-profile"
+	metadataSchema       = "1"
+	credentialTmpfsMount = "/run/garm-jit:rw,nosuid,nodev,noexec,uid=1001,gid=1001,mode=0700"
 )
 
 var errUnmanaged = errors.New("app is not managed by garm-provider-truenas")
@@ -364,11 +364,11 @@ func validateFixedRunnerService(runner map[string]any, labels map[string]string)
 	}
 
 	allowedLabels := map[string]bool{
-		labelManaged: true,
-		labelSchema: true,
-		labelController: true,
-		labelPool: true,
-		labelProfile: true,
+		labelManaged:             true,
+		labelSchema:              true,
+		labelController:          true,
+		labelPool:                true,
+		labelProfile:             true,
 		labelCallbackHostGateway: true,
 	}
 	for key := range labels {
@@ -390,12 +390,12 @@ func validateFixedRunnerService(runner map[string]any, labels map[string]string)
 		return nil, managedDriftf("runner environment is unreadable")
 	}
 	requiredEnvironment := map[string]bool{
-		"GARM_CALLBACK_URL": true,
-		"GARM_METADATA_URL": true,
-		"GARM_INSTANCE_TOKEN": true,
+		"GARM_CALLBACK_URL":        true,
+		"GARM_METADATA_URL":        true,
+		"GARM_INSTANCE_TOKEN":      true,
 		"GARM_RUNNER_DOWNLOAD_URL": true,
-		"GARM_RUNNER_FILENAME": true,
-		"GARM_RUNNER_SHA256": true,
+		"GARM_RUNNER_FILENAME":     true,
+		"GARM_RUNNER_SHA256":       true,
 	}
 	if len(environment) != len(requiredEnvironment) {
 		return nil, managedDriftf("runner environment field count drifted")
