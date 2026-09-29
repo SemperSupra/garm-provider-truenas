@@ -23,9 +23,9 @@ The supported path is intentionally narrow:
 - no host Docker socket, host mounts, or privileged mode;
 - provider-side ownership, resource ceilings, idempotency, reconciliation, and safe-retirement checks;
 - public CI on GitHub-hosted runners covering formatting, module integrity, vet, race tests, build, mocked GARM/TrueNAS behavior, and a real Docker smoke of the pinned image plus verified runner payload and Node 24;
-- real TrueNAS hardware-in-loop runtime-realization testing remains a private qualification gate before any portfolio pilot.
+- capacity-one real TrueNAS hardware-in-loop runtime realization and the first bounded private pilot are qualified through separately governed private evidence; routine capacity above one still requires distinct concurrency HIL and remains unqualified.
 
-Public CI proves the generic provider and container/bootstrap contract. It does not claim real TrueNAS runtime realization, networking, App lifecycle timing, GitHub runner registration, target-host cleanup, or scale-set reliability.
+Public CI proves the generic provider and container/bootstrap contract. It does not, by itself, claim real TrueNAS runtime realization, networking, App lifecycle timing, GitHub runner registration, target-host cleanup, or scale-set reliability. Capacity-one claims come from separate private HIL; broader capacity/concurrency claims require their own private evidence.
 
 The provider is a native TrueNAS runtime-realization component, not the general Foundry source materializer and not a multi-runtime target-lowering adapter. Future Foundry targets require separate adapters and qualification.
 
