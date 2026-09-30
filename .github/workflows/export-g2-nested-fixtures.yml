@@ -1,0 +1,117 @@
+name: Export GARM provider nested G2 fixtures
+
+on:
+  workflow_call:
+    inputs:
+      provider_ref:
+        description: Exact SemperSupra/garm-provider-truenas commit to export
+        required: true
+        type: string
+  workflow_dispatch:
+    inputs:
+      provider_ref:
+        description: Exact provider commit; blank uses this workflow commit
+        required: false
+        type: string
+  push:
+    branches:
+      - prep/g2-nested-fixture-v1
+    paths:
+      - ".github/workflows/export-g2-nested-fixtures.yml"
+      - "internal/truenasstore/g2_fixture_export_test.go"
+      - "internal/truenasstore/store.go"
+      - "internal/truenasstore/store_test.go"
+      - "internal/provider/provider.go"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: garm-provider-g2-fixture-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  export:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - name: Resolve exact provider source
+        id: source
+        shell: bash
+        env:
+          REQUESTED_REF: ${{ inputs.provider_ref }}
+        run: |
+          set -euo pipefail
+          ref="${REQUESTED_REF:-}"
+          if [[ -z "$ref" ]]; then
+            ref="$GITHUB_SHA"
+          fi
+          [[ "$ref" =~ ^[0-9a-f]{40}$ ]]
+          echo "ref=$ref" >> "$GITHUB_OUTPUT"
+
+      - name: Checkout exact provider source
+        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803
+        with:
+          repository: SemperSupra/garm-provider-truenas
+          ref: ${{ steps.source.outputs.ref }}
+          persist-credentials: false
+
+      - name: Verify source and ordinary provider tests
+        shell: bash
+        run: |
+          set -euo pipefail
+          [[ "$(git rev-parse HEAD)" == "${{ steps.source.outputs.ref }}" ]]
+          go test ./internal/truenasstore ./internal/provider
+
+      - name: Export exact G2 fixture bundle
+        shell: bash
+        env:
+          G2_FIXTURE_OUT: /tmp/g2/garm-provider-g2-fixtures.json
+          G2_PROVIDER_SOURCE: ${{ steps.source.outputs.ref }}
+        run: |
+          set -euo pipefail
+          mkdir -p /tmp/g2
+          go test ./internal/truenasstore -run '^TestExportNestedG2FixtureBundle$' -count=1 -v
+          test -s "$G2_FIXTURE_OUT"
+          jq -e --arg source "${{ steps.source.outputs.ref }}" '
+            .schema == "semper-supra.garm-provider-truenas-g2-fixtures/1" and
+            .provider_source == $source and
+            .controller_id == "g2-controller" and
+            .pool_id == "g2-pool" and
+            .runner.execution_profile == "truenas-linux-general" and
+            .runner.image == "ghcr.io/actions/actions-runner:2.336.0@sha256:0cfdcc701ce933c6d243c6b0b2da767366dc9f2e99961d4c3754b0b78084cdda" and
+            (.fixtures | keys | sort) == ["managed_drift","valid_foreign","valid_local"]
+          ' "$G2_FIXTURE_OUT" >/dev/null
+
+          jq -e '
+            .fixtures.valid_local.compose.services.runner.restart == "no" and
+            .fixtures.valid_foreign.compose.services.runner.restart == "no" and
+            .fixtures.managed_drift.compose.services.runner.restart == "always" and
+            .fixtures.valid_local.compose.services.runner.labels["io.sempersupra.garm.controller-id"] == "g2-controller" and
+            .fixtures.valid_foreign.compose.services.runner.labels["io.sempersupra.garm.controller-id"] == "other-controller"
+          ' "$G2_FIXTURE_OUT" >/dev/null
+
+      - name: Upload exact G2 fixture bundle
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: garm-provider-truenas-g2-fixtures
+          path: /tmp/g2/garm-provider-g2-fixtures.json
+          if-no-files-found: error
+          retention-days: 7
+
+      - name: Record export evidence
+        if: always()
+        shell: bash
+        run: |
+          {
+            echo "### GARM provider nested G2 fixture export"
+            echo
+            echo "- provider source: \`${{ steps.source.outputs.ref }}\`"
+            if [[ -f /tmp/g2/garm-provider-g2-fixtures.json ]]; then
+              echo "- schema: \`$(jq -r '.schema' /tmp/g2/garm-provider-g2-fixtures.json)\`"
+              echo "- fixtures: \`$(jq -r '.fixtures | keys | sort | join(",")' /tmp/g2/garm-provider-g2-fixtures.json)\`"
+              echo "- runner image: \`$(jq -r '.runner.image' /tmp/g2/garm-provider-g2-fixtures.json)\`"
+            else
+              echo "- fixture bundle: not produced"
+            fi
+          } >> "$GITHUB_STEP_SUMMARY"
