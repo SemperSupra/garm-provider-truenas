@@ -20,10 +20,10 @@ type g2Bundle struct {
 	ProviderSource string               `json:"provider_source"`
 	ControllerID   string               `json:"controller_id"`
 	PoolID         string               `json:"pool_id"`
-	Runner          map[string]any       `json:"runner"`
-	Fixtures        map[string]g2Fixture `json:"fixtures"`
-	Claims          []string             `json:"claims"`
-	NonClaims       []string             `json:"non_claims"`
+	Runner         map[string]any       `json:"runner"`
+	Fixtures       map[string]g2Fixture `json:"fixtures"`
+	Claims         []string             `json:"claims"`
+	NonClaims      []string             `json:"non_claims"`
 }
 
 func composeObjectForG2(t *testing.T, spec provider.AppSpec) map[string]any {
@@ -74,14 +74,14 @@ func TestExportNestedG2FixtureBundle(t *testing.T) {
 		ControllerID:   local.ControllerID,
 		PoolID:         local.PoolID,
 		Runner: map[string]any{
-			"image":              provider.RunnerImage,
-			"version":            provider.RunnerVersion,
-			"tool_url":           provider.RunnerToolURL,
-			"tool_filename":      provider.RunnerToolFilename,
-			"tool_sha256":        provider.RunnerToolSHA256,
-			"cpu":                provider.GeneralCPU,
-			"memory_bytes":       provider.GeneralMemoryBytes,
-			"execution_profile":  provider.FlavorLinuxGeneral,
+			"image":             provider.RunnerImage,
+			"version":           provider.RunnerVersion,
+			"tool_url":          provider.RunnerToolURL,
+			"tool_filename":     provider.RunnerToolFilename,
+			"tool_sha256":       provider.RunnerToolSHA256,
+			"cpu":               provider.GeneralCPU,
+			"memory_bytes":      provider.GeneralMemoryBytes,
+			"execution_profile": provider.FlavorLinuxGeneral,
 		},
 		Fixtures: map[string]g2Fixture{
 			"valid_local": {
