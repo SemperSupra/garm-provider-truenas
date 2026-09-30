@@ -75,7 +75,8 @@ jobs:
           test -s "$G2_FIXTURE_OUT"
           jq -e --arg source "${{ steps.source.outputs.ref }}" '
             .schema == "semper-supra.garm-provider-truenas-g2-fixtures/1" and
-            .provider_product_source == "14535745dc3aa3c0b5466da7c704bca4d23dcec5" and\n            .producer_source == $source and
+            .provider_product_source == "14535745dc3aa3c0b5466da7c704bca4d23dcec5" and
+            .producer_source == $source and
             .controller_id == "g2-controller" and
             .pool_id == "g2-pool" and
             .runner.execution_profile == "truenas-linux-general" and
