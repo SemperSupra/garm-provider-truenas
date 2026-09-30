@@ -84,8 +84,8 @@ jobs:
             .bootstrap.arch == "amd64" and
             .bootstrap.flavor == "truenas-linux-general" and
             .bootstrap.jit_config_enabled == true and
-            .bootstrap.callback-url == "https://127.0.0.1:1/callbacks" and
-            .bootstrap.metadata-url == "https://127.0.0.1:1/metadata"
+            .bootstrap["callback-url"] == "https://127.0.0.1:1/callbacks" and
+            .bootstrap["metadata-url"] == "https://127.0.0.1:1/metadata"
           ' "$G3_BOOTSTRAP_OUT" >/dev/null
 
           ! grep -R -q --             'BEGIN PRIVATE KEY\|ghp_\|github_pat_\|sk-'             /tmp/g3
