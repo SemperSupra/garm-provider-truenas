@@ -67,7 +67,7 @@ jobs:
         shell: bash
         env:
           G2_FIXTURE_OUT: /tmp/g2/garm-provider-g2-fixtures.json
-          G2_PROVIDER_SOURCE: ${{ steps.source.outputs.ref }}
+          G2_PRODUCER_SOURCE: ${{ steps.source.outputs.ref }}
         run: |
           set -euo pipefail
           mkdir -p /tmp/g2
@@ -75,7 +75,7 @@ jobs:
           test -s "$G2_FIXTURE_OUT"
           jq -e --arg source "${{ steps.source.outputs.ref }}" '
             .schema == "semper-supra.garm-provider-truenas-g2-fixtures/1" and
-            .provider_source == $source and
+            .provider_product_source == "14535745dc3aa3c0b5466da7c704bca4d23dcec5" and\n            .producer_source == $source and
             .controller_id == "g2-controller" and
             .pool_id == "g2-pool" and
             .runner.execution_profile == "truenas-linux-general" and
