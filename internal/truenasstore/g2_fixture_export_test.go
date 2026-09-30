@@ -17,7 +17,7 @@ type g2Fixture struct {
 
 type g2Bundle struct {
 	Schema         string               `json:"schema"`
-	ProviderSource string               `json:"provider_source"`
+	ProviderProductSource string        `json:"provider_product_source"`\n\tProducerSource        string               `json:"producer_source"`
 	ControllerID   string               `json:"controller_id"`
 	PoolID         string               `json:"pool_id"`
 	Runner         map[string]any       `json:"runner"`
@@ -70,7 +70,7 @@ func TestExportNestedG2FixtureBundle(t *testing.T) {
 
 	bundle := g2Bundle{
 		Schema:         "semper-supra.garm-provider-truenas-g2-fixtures/1",
-		ProviderSource: source,
+		ProviderProductSource: "14535745dc3aa3c0b5466da7c704bca4d23dcec5",\n\t\tProducerSource:        producerSource,
 		ControllerID:   local.ControllerID,
 		PoolID:         local.PoolID,
 		Runner: map[string]any{
