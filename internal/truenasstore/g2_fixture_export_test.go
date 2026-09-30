@@ -16,14 +16,15 @@ type g2Fixture struct {
 }
 
 type g2Bundle struct {
-	Schema         string               `json:"schema"`
-	ProviderProductSource string        `json:"provider_product_source"`\n\tProducerSource        string               `json:"producer_source"`
-	ControllerID   string               `json:"controller_id"`
-	PoolID         string               `json:"pool_id"`
-	Runner         map[string]any       `json:"runner"`
-	Fixtures       map[string]g2Fixture `json:"fixtures"`
-	Claims         []string             `json:"claims"`
-	NonClaims      []string             `json:"non_claims"`
+	Schema                string               `json:"schema"`
+	ProviderProductSource string               `json:"provider_product_source"`
+	ProducerSource        string               `json:"producer_source"`
+	ControllerID          string               `json:"controller_id"`
+	PoolID                string               `json:"pool_id"`
+	Runner                map[string]any       `json:"runner"`
+	Fixtures              map[string]g2Fixture `json:"fixtures"`
+	Claims                []string             `json:"claims"`
+	NonClaims             []string             `json:"non_claims"`
 }
 
 func composeObjectForG2(t *testing.T, spec provider.AppSpec) map[string]any {
@@ -63,16 +64,17 @@ func TestExportNestedG2FixtureBundle(t *testing.T) {
 	driftDoc := composeObjectForG2(t, local)
 	driftDoc["services"].(map[string]any)["runner"].(map[string]any)["restart"] = "always"
 
-	source := os.Getenv("G2_PROVIDER_SOURCE")
-	if source == "" {
-		source = "14535745dc3aa3c0b5466da7c704bca4d23dcec5"
+	producerSource := os.Getenv("G2_PRODUCER_SOURCE")
+	if producerSource == "" {
+		producerSource = "unknown"
 	}
 
 	bundle := g2Bundle{
-		Schema:         "semper-supra.garm-provider-truenas-g2-fixtures/1",
-		ProviderProductSource: "14535745dc3aa3c0b5466da7c704bca4d23dcec5",\n\t\tProducerSource:        producerSource,
-		ControllerID:   local.ControllerID,
-		PoolID:         local.PoolID,
+		Schema:                "semper-supra.garm-provider-truenas-g2-fixtures/1",
+		ProviderProductSource: "14535745dc3aa3c0b5466da7c704bca4d23dcec5",
+		ProducerSource:        producerSource,
+		ControllerID:          local.ControllerID,
+		PoolID:                local.PoolID,
 		Runner: map[string]any{
 			"image":             provider.RunnerImage,
 			"version":           provider.RunnerVersion,
