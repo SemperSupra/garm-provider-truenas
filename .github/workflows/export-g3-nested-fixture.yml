@@ -1,0 +1,137 @@
+name: Export GARM provider nested G3 fixture
+
+on:
+  workflow_call:
+    inputs:
+      provider_ref:
+        description: Exact SemperSupra/garm-provider-truenas commit to export
+        required: true
+        type: string
+  workflow_dispatch:
+    inputs:
+      provider_ref:
+        description: Exact provider commit; blank uses this workflow commit
+        required: false
+        type: string
+  push:
+    branches:
+      - prep/g3-nested-create-fixture
+    paths:
+      - ".github/workflows/export-g3-nested-fixture.yml"
+      - "internal/truenasstore/g3_fixture_export_test.go"
+      - "internal/truenasstore/store.go"
+      - "internal/provider/provider.go"
+      - "cmd/garm-provider-truenas/garm_provider.go"
+      - "cmd/garm-provider-truenas/runner_tool.go"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: garm-provider-g3-fixture-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  export:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - name: Resolve exact provider source
+        id: source
+        shell: bash
+        env:
+          REQUESTED_REF: ${{ inputs.provider_ref }}
+        run: |
+          set -euo pipefail
+          ref="${REQUESTED_REF:-}"
+          if [[ -z "$ref" ]]; then
+            ref="$GITHUB_SHA"
+          fi
+          [[ "$ref" =~ ^[0-9a-f]{40}$ ]]
+          echo "ref=$ref" >> "$GITHUB_OUTPUT"
+
+      - name: Checkout exact provider source
+        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803
+        with:
+          repository: SemperSupra/garm-provider-truenas
+          ref: ${{ steps.source.outputs.ref }}
+          persist-credentials: false
+
+      - name: Verify source and provider contract tests
+        shell: bash
+        run: |
+          set -euo pipefail
+          [[ "$(git rev-parse HEAD)" == "${{ steps.source.outputs.ref }}" ]]
+          go test ./cmd/garm-provider-truenas ./internal/truenasstore ./internal/provider
+
+      - name: Export exact G3 fixture bundle
+        shell: bash
+        env:
+          G3_FIXTURE_OUT: /tmp/g3/garm-provider-g3-fixture.json
+          G3_PRODUCER_SOURCE: ${{ steps.source.outputs.ref }}
+        run: |
+          set -euo pipefail
+          mkdir -p /tmp/g3
+          go test ./internal/truenasstore -run '^TestExportNestedG3CreateFixtureBundle$' -count=1 -v
+          test -s "$G3_FIXTURE_OUT"
+
+          jq -e --arg source "${{ steps.source.outputs.ref }}" '
+            .schema == "semper-supra.garm-provider-truenas-g3-create-fixture/1" and
+            .provider_product_source == "14535745dc3aa3c0b5466da7c704bca4d23dcec5" and
+            .producer_source == $source and
+            .controller_id == "g3-controller" and
+            .pool_id == "g3-pool" and
+            (.expected_app_name | type == "string" and startswith("garm-") and length <= 40) and
+            .bootstrap_template.os_type == "linux" and
+            .bootstrap_template.arch == "amd64" and
+            .bootstrap_template.flavor == "truenas-linux-general" and
+            .bootstrap_template.jit_config_enabled == true and
+            .bootstrap_template.image == .runner.image and
+            .bootstrap_template.pool_id == "g3-pool" and
+            (.bootstrap_template.extra_specs.runner_install_template | type == "string" and length > 0) and
+            .runner.image == "ghcr.io/actions/actions-runner:2.336.0@sha256:0cfdcc701ce933c6d243c6b0b2da767366dc9f2e99961d4c3754b0b78084cdda" and
+            .runner.tool_sha256 == "04cf0be1aff4c3ec3554466c39124ca250e3effd8873bb7e8d68535aa9505d5d" and
+            .runner.cpu == 4 and
+            .runner.memory_bytes == 8589934592
+          ' "$G3_FIXTURE_OUT" >/dev/null
+
+          jq -e '
+            .expected_compose_template.services.runner.image == .runner.image and
+            .expected_compose_template.services.runner.user == "1001:1001" and
+            .expected_compose_template.services.runner.restart == "no" and
+            .expected_compose_template.services.runner.cap_drop == ["ALL"] and
+            .expected_compose_template.services.runner.security_opt == ["no-new-privileges:true"] and
+            .expected_compose_template.services.runner.cpus == 4 and
+            .expected_compose_template.services.runner.mem_limit == 8589934592 and
+            .expected_compose_template.services.runner.tmpfs == ["/run/garm-jit:rw,nosuid,nodev,noexec,uid=1001,gid=1001,mode=0700"] and
+            .expected_compose_template.services.runner.labels["io.sempersupra.garm.controller-id"] == "g3-controller" and
+            .expected_compose_template.services.runner.labels["io.sempersupra.garm.pool-id"] == "g3-pool" and
+            .expected_compose_template.services.runner.labels["io.sempersupra.garm.execution-profile"] == "truenas-linux-general" and
+            .expected_compose_template.services.runner.environment.GARM_RUNNER_SHA256 == .runner.tool_sha256
+          ' "$G3_FIXTURE_OUT" >/dev/null
+
+      - name: Upload exact G3 fixture bundle
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: garm-provider-truenas-g3-fixture
+          path: /tmp/g3/garm-provider-g3-fixture.json
+          if-no-files-found: error
+          retention-days: 7
+
+      - name: Record export evidence
+        if: always()
+        shell: bash
+        run: |
+          {
+            echo "### GARM provider nested G3 fixture export"
+            echo
+            echo "- provider source: `${{ steps.source.outputs.ref }}`"
+            if [[ -f /tmp/g3/garm-provider-g3-fixture.json ]]; then
+              echo "- schema: `$(jq -r '.schema' /tmp/g3/garm-provider-g3-fixture.json)`"
+              echo "- expected App: `$(jq -r '.expected_app_name' /tmp/g3/garm-provider-g3-fixture.json)`"
+              echo "- runner image: `$(jq -r '.runner.image' /tmp/g3/garm-provider-g3-fixture.json)`"
+              echo "- run-local substitutions: `$(jq -r '.run_local_substitutions | join(",")' /tmp/g3/garm-provider-g3-fixture.json)`"
+            else
+              echo "- fixture bundle: not produced"
+            fi
+          } >> "$GITHUB_STEP_SUMMARY"
