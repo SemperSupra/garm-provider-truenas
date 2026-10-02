@@ -98,15 +98,16 @@ jobs:
           ' "$G4_FIXTURE_OUT" >/dev/null
 
           jq -e '
+            . as $root |
             all(.runners[];
               .bootstrap_template.os_type == "linux" and
               .bootstrap_template.arch == "amd64" and
               .bootstrap_template.flavor == "truenas-linux-general" and
               .bootstrap_template.jit_config_enabled == true and
-              .bootstrap_template.image == $.runner.image and
+              .bootstrap_template.image == $root.runner.image and
               .bootstrap_template.pool_id == "g4-pool" and
               (.bootstrap_template.extra_specs.runner_install_template | type == "string" and length > 0) and
-              .expected_compose_template.services.runner.image == $.runner.image and
+              .expected_compose_template.services.runner.image == $root.runner.image and
               .expected_compose_template.services.runner.user == "1001:1001" and
               .expected_compose_template.services.runner.restart == "no" and
               .expected_compose_template.services.runner.cap_drop == ["ALL"] and
@@ -117,7 +118,7 @@ jobs:
               .expected_compose_template.services.runner.labels["io.sempersupra.garm.controller-id"] == "g4-controller" and
               .expected_compose_template.services.runner.labels["io.sempersupra.garm.pool-id"] == "g4-pool" and
               .expected_compose_template.services.runner.labels["io.sempersupra.garm.execution-profile"] == "truenas-linux-general" and
-              .expected_compose_template.services.runner.environment.GARM_RUNNER_SHA256 == $.runner.tool_sha256
+              .expected_compose_template.services.runner.environment.GARM_RUNNER_SHA256 == $root.runner.tool_sha256
             )
           ' "$G4_FIXTURE_OUT" >/dev/null
 
