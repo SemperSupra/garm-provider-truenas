@@ -123,15 +123,15 @@ jobs:
         shell: bash
         run: |
           {
-            echo "### GARM provider nested G3 fixture export"
-            echo
-            echo "- provider source: `${{ steps.source.outputs.ref }}`"
+            printf '%s\n' '### GARM provider nested G3 fixture export'
+            printf '\n'
+            printf -- '- provider source: `%s`\n' '${{ steps.source.outputs.ref }}'
             if [[ -f /tmp/g3/garm-provider-g3-fixture.json ]]; then
-              echo "- schema: `$(jq -r '.schema' /tmp/g3/garm-provider-g3-fixture.json)`"
-              echo "- expected App: `$(jq -r '.expected_app_name' /tmp/g3/garm-provider-g3-fixture.json)`"
-              echo "- runner image: `$(jq -r '.runner.image' /tmp/g3/garm-provider-g3-fixture.json)`"
-              echo "- run-local substitutions: `$(jq -r '.run_local_substitutions | join(",")' /tmp/g3/garm-provider-g3-fixture.json)`"
+              printf -- '- schema: `%s`\n' "$(jq -r '.schema' /tmp/g3/garm-provider-g3-fixture.json)"
+              printf -- '- expected App: `%s`\n' "$(jq -r '.expected_app_name' /tmp/g3/garm-provider-g3-fixture.json)"
+              printf -- '- runner image: `%s`\n' "$(jq -r '.runner.image' /tmp/g3/garm-provider-g3-fixture.json)"
+              printf -- '- run-local substitutions: `%s`\n' "$(jq -r '.run_local_substitutions | join(\",\")' /tmp/g3/garm-provider-g3-fixture.json)"
             else
-              echo "- fixture bundle: not produced"
+              printf '%s\n' '- fixture bundle: not produced'
             fi
           } >> "$GITHUB_STEP_SUMMARY"
