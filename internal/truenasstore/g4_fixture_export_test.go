@@ -69,7 +69,7 @@ type g4Bundle struct {
 	ControllerID          string            `json:"controller_id"`
 	PoolID                string            `json:"pool_id"`
 	Runners               []g4RunnerFixture `json:"runners"`
-	Runner                 map[string]any    `json:"runner"`
+	Runner                map[string]any    `json:"runner"`
 	RetirementOrders      [][]string        `json:"retirement_orders"`
 	RunLocalSubstitutions []string          `json:"run_local_substitutions"`
 	SourceOracles         map[string]bool   `json:"source_oracles"`
@@ -345,15 +345,15 @@ func TestExportNestedG4CapacityTwoFixtureBundle(t *testing.T) {
 			"runners[1].expected_compose_template.services.runner.environment.GARM_INSTANCE_TOKEN",
 		},
 		SourceOracles: map[string]bool{
-			"two_distinct_provider_owned_names":           true,
-			"true_nas_name_limit_preserved":               true,
-			"fixed_profile_generated_for_each_runner":     true,
-			"bootstrap_identity_isolated":                 true,
-			"fresh_manager_adopts_exact_pair":             true,
-			"active_delete_refused":                       true,
-			"retirement_alpha_then_beta":                  true,
-			"retirement_beta_then_alpha":                  true,
-			"final_provider_inventory_empty":              true,
+			"two_distinct_provider_owned_names":       true,
+			"true_nas_name_limit_preserved":           true,
+			"fixed_profile_generated_for_each_runner": true,
+			"bootstrap_identity_isolated":             true,
+			"fresh_manager_adopts_exact_pair":         true,
+			"active_delete_refused":                   true,
+			"retirement_alpha_then_beta":              true,
+			"retirement_beta_then_alpha":              true,
+			"final_provider_inventory_empty":          true,
 		},
 		Claims: []string{
 			"both bootstrap templates use the exact GARM provider-common JSON contract",
