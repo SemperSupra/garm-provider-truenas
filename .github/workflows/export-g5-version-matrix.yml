@@ -1,0 +1,166 @@
+name: Export GARM provider G5 TrueNAS version matrix
+
+on:
+  workflow_call:
+    inputs:
+      provider_ref:
+        description: Exact SemperSupra/garm-provider-truenas commit to export
+        required: true
+        type: string
+  workflow_dispatch:
+    inputs:
+      provider_ref:
+        description: Exact provider commit; blank uses this workflow commit
+        required: false
+        type: string
+  push:
+    branches:
+      - prep/g5-version-matrix-source-20261003
+    paths:
+      - ".github/workflows/export-g5-version-matrix.yml"
+      - "internal/truenasstore/testdata/truenas-version-matrix.json"
+      - "internal/truenasstore/version_matrix_contract_test.go"
+      - "internal/truenasstore/upstream_contract_test.go"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: garm-provider-g5-version-matrix-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  export:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - name: Resolve exact provider source
+        id: source
+        shell: bash
+        env:
+          REQUESTED_REF: ${{ inputs.provider_ref }}
+        run: |
+          set -euo pipefail
+          ref="${REQUESTED_REF:-}"
+          if [[ -z "$ref" ]]; then
+            ref="$GITHUB_SHA"
+          fi
+          [[ "$ref" =~ ^[0-9a-f]{40}$ ]]
+          echo "ref=$ref" >> "$GITHUB_OUTPUT"
+
+      - name: Checkout exact provider source
+        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803
+        with:
+          repository: SemperSupra/garm-provider-truenas
+          ref: ${{ steps.source.outputs.ref }}
+          persist-credentials: false
+
+      - name: Verify provider-side matrix contract
+        shell: bash
+        run: |
+          set -euo pipefail
+          [[ "$(git rev-parse HEAD)" == "${{ steps.source.outputs.ref }}" ]]
+          test -z "$(gofmt -l internal/truenasstore/version_matrix_contract_test.go)"
+          go test ./internal/truenasstore -run '^(TestIXDerivedAppsStateContract|TestIXDerivedAppsDeleteContract|TestG5VersionMatrixContract)$' -count=1 -v
+          jq -e '
+            .schema == "semper-supra.garm-provider-truenas-g5-version-matrix/1" and
+            .provider_product_source == "14535745dc3aa3c0b5466da7c704bca4d23dcec5" and
+            .runtime_inheritance_allowed == false and
+            (.targets | length == 4) and
+            ([.targets[].version] | sort) == (["25.04.1","25.04.2.6","25.10.7","26.0.0-BETA.3"] | sort)
+          ' internal/truenasstore/testdata/truenas-version-matrix.json >/dev/null
+
+      - name: Verify exact upstream commits, blob identities, and method surfaces
+        shell: bash
+        run: |
+          set -euo pipefail
+          fixture="$PWD/internal/truenasstore/testdata/truenas-version-matrix.json"
+          upstream=/tmp/truenas-middleware-g5
+          rm -rf "$upstream"
+          git init -q "$upstream"
+          git -C "$upstream" remote add origin https://github.com/truenas/middleware.git
+
+          mapfile -t versions < <(jq -r '.targets[].version' "$fixture")
+          for version in "${versions[@]}"; do
+            commit="$(jq -r --arg version "$version" '.targets[] | select(.version == $version) | .middleware_commit' "$fixture")"
+            [[ "$commit" =~ ^[0-9a-f]{40}$ ]]
+            git -C "$upstream" fetch -q --depth=1 origin "$commit"
+            [[ "$(git -C "$upstream" rev-parse FETCH_HEAD)" == "$commit" ]]
+
+            while IFS=$'\t' read -r path expected_blob; do
+              observed_blob="$(git -C "$upstream" rev-parse "$commit:$path")"
+              if [[ "$observed_blob" != "$expected_blob" ]]; then
+                echo "$version blob drift: $path got $observed_blob want $expected_blob" >&2
+                exit 1
+              fi
+            done < <(
+              jq -r --arg version "$version" '
+                .targets[] | select(.version == $version) | .source_blobs
+                | to_entries[] | [.key,.value] | @tsv
+              ' "$fixture"
+            )
+
+            git -C "$upstream" grep -Eq 'def version\(' "$commit" -- src/middlewared/middlewared/plugins/system
+            git -C "$upstream" grep -Eq 'def do_update\(' "$commit" -- src/middlewared/middlewared/plugins/system_general/update.py
+            git -C "$upstream" grep -Eq 'def ui_restart\(' "$commit" -- src/middlewared/middlewared/plugins/system_general/ui.py
+            git -C "$upstream" grep -Eq 'def do_create\(' "$commit" -- src/middlewared/middlewared/plugins/api_key.py
+            git -C "$upstream" grep -Eq 'def do_delete\(' "$commit" -- src/middlewared/middlewared/plugins/api_key.py
+            git -C "$upstream" grep -Eq 'def do_create\(' "$commit" -- src/middlewared/middlewared/plugins/crypto_/certificates.py
+            git -C "$upstream" grep -Eq 'def do_delete\(' "$commit" -- src/middlewared/middlewared/plugins/crypto_/certificates.py
+            git -C "$upstream" grep -Eq 'def do_create\(' "$commit" -- src/middlewared/middlewared/plugins/apps/crud.py
+            git -C "$upstream" grep -Eq 'def do_delete\(' "$commit" -- src/middlewared/middlewared/plugins/apps/crud.py
+            git -C "$upstream" grep -Eq 'def stop\(' "$commit" -- src/middlewared/middlewared/plugins/apps
+            git -C "$upstream" grep -Eq 'get_app_config|custom_compose_config' "$commit" -- src/middlewared/middlewared/plugins/apps
+          done
+
+      - name: Export exact source-attributed G5 matrix
+        shell: bash
+        env:
+          PROVIDER_SOURCE: ${{ steps.source.outputs.ref }}
+        run: |
+          set -euo pipefail
+          mkdir -p /tmp/g5
+          jq --arg source "$PROVIDER_SOURCE" '
+            . + {
+              producer_source: $source,
+              source_oracles: {
+                exact_middleware_commits: true,
+                exact_git_blob_identities: true,
+                provider_method_surface_scan: true,
+                existing_25_04_1_contract_consistent: true,
+                runtime_inheritance_prohibited: true
+              }
+            }
+          ' internal/truenasstore/testdata/truenas-version-matrix.json             > /tmp/g5/garm-provider-truenas-g5-version-matrix.json
+
+          jq -e --arg source "$PROVIDER_SOURCE" '
+            .producer_source == $source and
+            .source_oracles.exact_middleware_commits == true and
+            .source_oracles.exact_git_blob_identities == true and
+            .source_oracles.provider_method_surface_scan == true and
+            .source_oracles.runtime_inheritance_prohibited == true
+          ' /tmp/g5/garm-provider-truenas-g5-version-matrix.json >/dev/null
+
+      - name: Upload exact G5 version matrix
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: garm-provider-truenas-g5-version-matrix
+          path: /tmp/g5/garm-provider-truenas-g5-version-matrix.json
+          if-no-files-found: error
+          retention-days: 7
+
+      - name: Record matrix evidence
+        if: always()
+        shell: bash
+        run: |
+          {
+            printf '%s\n' '### GARM provider G5 exact-version source matrix'
+            printf '\n'
+            printf -- '- provider source: `%s`\n' '${{ steps.source.outputs.ref }}'
+            if [[ -f /tmp/g5/garm-provider-truenas-g5-version-matrix.json ]]; then
+              printf -- '- targets: `%s`\n' "$(jq -c '[.targets[].version]' /tmp/g5/garm-provider-truenas-g5-version-matrix.json)"
+              printf -- '- source oracles: `%s`\n' "$(jq -c '.source_oracles' /tmp/g5/garm-provider-truenas-g5-version-matrix.json)"
+            else
+              printf '%s\n' '- version matrix: not produced'
+            fi
+          } >> "$GITHUB_STEP_SUMMARY"
