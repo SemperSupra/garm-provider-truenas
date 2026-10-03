@@ -1,0 +1,86 @@
+{
+  "schema": "semper-supra.garm-provider-truenas-g5-version-matrix/1",
+  "provider_product_source": "14535745dc3aa3c0b5466da7c704bca4d23dcec5",
+  "runtime_inheritance_allowed": false,
+  "required_method_surfaces": [
+    "system.version",
+    "system.general.config",
+    "system.general.update",
+    "system.general.ui_restart",
+    "api_key.create",
+    "api_key.delete",
+    "certificate.create",
+    "certificate.delete",
+    "app.create",
+    "app.query",
+    "app.config",
+    "app.stop",
+    "app.delete"
+  ],
+  "targets": [
+    {
+      "version": "25.04.1",
+      "system_version": "TrueNAS-25.04.1",
+      "middleware_ref": "release/25.04.1",
+      "middleware_commit": "74ab5a2d373be4097dece257d00e1086376333ba",
+      "source_equivalence_group": "fangtooth-25.04-provider-control",
+      "source_blobs": {
+        "src/middlewared/middlewared/plugins/apps/crud.py": "f3c4f79201c0d2340a8bc2cfbe4757448a6851ba",
+        "src/middlewared/middlewared/plugins/apps/ix_apps/query.py": "bfbd96d2bd5bdd9853f753d485300911588636c1",
+        "src/middlewared/middlewared/plugins/api_key.py": "3ddec3cae8bd83e78bc21ed1f9dc6c2fcd97b27b",
+        "src/middlewared/middlewared/plugins/crypto_/certificates.py": "f787be1cbcf9bd22c7dc4d09f6663ae9d50f53bf",
+        "src/middlewared/middlewared/plugins/system_general/update.py": "552ead77229557220c7ea290453a7391dafde7e1",
+        "src/middlewared/middlewared/plugins/system_general/ui.py": "664513f04a58136065c0df1c73453f94eccab114",
+        "src/middlewared/middlewared/plugins/filesystem.py": "f040ae8f5d65ead4949d7739412339ef3f56e476"
+      }
+    },
+    {
+      "version": "25.04.2.6",
+      "system_version": "TrueNAS-25.04.2.6",
+      "middleware_ref": "release/25.04.2.6",
+      "middleware_commit": "244b717370fe35fb9eefc3096acfbc25f12b57b6",
+      "source_equivalence_group": "fangtooth-25.04-provider-control",
+      "source_blobs": {
+        "src/middlewared/middlewared/plugins/apps/crud.py": "f3c4f79201c0d2340a8bc2cfbe4757448a6851ba",
+        "src/middlewared/middlewared/plugins/apps/ix_apps/query.py": "bfbd96d2bd5bdd9853f753d485300911588636c1",
+        "src/middlewared/middlewared/plugins/api_key.py": "3ddec3cae8bd83e78bc21ed1f9dc6c2fcd97b27b",
+        "src/middlewared/middlewared/plugins/crypto_/certificates.py": "bb47a65e893b365ff088ba1260b658896be8c9bb",
+        "src/middlewared/middlewared/plugins/system_general/update.py": "552ead77229557220c7ea290453a7391dafde7e1",
+        "src/middlewared/middlewared/plugins/system_general/ui.py": "664513f04a58136065c0df1c73453f94eccab114",
+        "src/middlewared/middlewared/plugins/filesystem.py": "f040ae8f5d65ead4949d7739412339ef3f56e476"
+      }
+    },
+    {
+      "version": "25.10.7",
+      "system_version": "TrueNAS-25.10.7",
+      "middleware_ref": "TS-25.10.7",
+      "middleware_commit": "8ede398839710e56893d88ce85088139d8fab18e",
+      "source_equivalence_group": "goldeye-25.10.7-provider-control",
+      "source_blobs": {
+        "src/middlewared/middlewared/plugins/apps/crud.py": "c7d01e03509bb8aa95d6650a09f7d6fd052671fc",
+        "src/middlewared/middlewared/plugins/apps/ix_apps/query.py": "13dab4bd9ed1eb6af152b4d1d5fab7b0866d4119",
+        "src/middlewared/middlewared/plugins/api_key.py": "42331b4f2cf75d75c1414c3b89c68dae15f5ff17",
+        "src/middlewared/middlewared/plugins/crypto_/certificates.py": "7ac466cb828acc6356ad0b783b9e85856c8c8374",
+        "src/middlewared/middlewared/plugins/system_general/update.py": "5ba181935dbedcc831538041c20969362b5de7ea",
+        "src/middlewared/middlewared/plugins/system_general/ui.py": "5f6ec24e4bf489389f893c94488974244c47c5f5",
+        "src/middlewared/middlewared/plugins/filesystem.py": "a28911a432c9a04a8321cbaafb6c6516870dc428"
+      }
+    },
+    {
+      "version": "26.0.0-BETA.3",
+      "system_version": "TrueNAS-26.0.0-BETA.3",
+      "middleware_ref": "TS-26.0.0-BETA.3",
+      "middleware_commit": "81e1265a86083888ba94a2bdfc02ff5c9c5ef6a3",
+      "source_equivalence_group": "26-beta3-provider-control",
+      "source_blobs": {
+        "src/middlewared/middlewared/plugins/apps/crud.py": "8e456bbec3a5ab24249e1ac564b4c8067f7a156a",
+        "src/middlewared/middlewared/plugins/apps/ix_apps/query.py": "51d8f8bc791d7c0b08b39ac6db14f832ee04b265",
+        "src/middlewared/middlewared/plugins/api_key.py": "e206713812f81fa7fcac3914318126ed6fcca144",
+        "src/middlewared/middlewared/plugins/crypto_/certificates.py": "924786f69b23bf929bf50b65169c174021aab411",
+        "src/middlewared/middlewared/plugins/system_general/update.py": "59ed279dafc8d0f485ad11f751cac750db23b9d5",
+        "src/middlewared/middlewared/plugins/system_general/ui.py": "7e669e2fa43c17205ee9e70f46a489125a40056b",
+        "src/middlewared/middlewared/plugins/filesystem.py": "d8feb5e7d2d0565ad7ffe1ae79466bb072911541"
+      }
+    }
+  ]
+}
