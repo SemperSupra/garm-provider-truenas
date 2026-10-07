@@ -20,7 +20,7 @@ type fakeClient struct {
 
 func newFakeClient() *fakeClient {
 	return &fakeClient{
-		version:  "TrueNAS-26.0.0-BETA.3",
+		version: "TrueNAS-26.0.0-BETA.3",
 		template: Template{
 			ID: 42, Name: TemplateFamily, RuntimeName: TemplateRuntimeName, Version: TemplateVersion,
 			SourceURL: TemplateSourceURL, SourceSHA256: TemplateSourceSHA256,
