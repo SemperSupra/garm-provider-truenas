@@ -18,6 +18,7 @@ type nestedContainerPreB4Fixture struct {
 	Profile           string                       `json:"profile"`
 	ImageFamily       string                       `json:"image_family"`
 	ExpectedName      string                       `json:"expected_name"`
+	RootfsProjection  nestedContainerRootfsProjection `json:"rootfs_projection"`
 	ExpectedOwnership map[string]string            `json:"expected_ownership"`
 	DesiredCreate     nestedContainerDesiredCreate `json:"desired_create"`
 	StagedFiles       []StagedFile                 `json:"staged_files"`
@@ -37,6 +38,12 @@ type nestedContainerTarget struct {
 	RequiredMethods  []string          `json:"required_methods"`
 	SourceBlobs      map[string]string `json:"source_blobs"`
 	Status           string            `json:"status"`
+}
+
+type nestedContainerRootfsProjection struct {
+	DatasetTemplate    string `json:"dataset_template"`
+	MountpointTemplate string `json:"mountpoint_template"`
+	SourcePath         string `json:"source_path"`
 }
 
 type nestedContainerDesiredCreate struct {
@@ -124,6 +131,11 @@ func TestExportNestedContainerPreB4Fixture(t *testing.T) {
 		Profile:      FlavorLinuxGeneral,
 		ImageFamily:  ImageFamily,
 		ExpectedName: ownedName("nested-container-controller", in.Name),
+		RootfsProjection: nestedContainerRootfsProjection{
+			DatasetTemplate:    "{pool}/.truenas_containers/containers/{name}",
+			MountpointTemplate: "/.truenas_containers/{pool}/containers/{name}",
+			SourcePath:         "src/middlewared/middlewared/plugins/container/utils.py",
+		},
 		ExpectedOwnership: map[string]string{
 			"schema":        "semper-supra.garm-container-owner/1",
 			"managed_by":    "garm-provider-truenas",
@@ -155,6 +167,7 @@ func TestExportNestedContainerPreB4Fixture(t *testing.T) {
 			"exact_version_required":                   true,
 			"foreign_ownership_rejected":               true,
 			"supported_rootfs_staging_defined":         true,
+			"source_derived_rootfs_projection_required": true,
 			"create_arguments_credential_free":         true,
 			"credential_pipe_staging_required":         true,
 			"credential_file_delete_required":          true,
@@ -168,7 +181,7 @@ func TestExportNestedContainerPreB4Fixture(t *testing.T) {
 			"bootstrap_execution_claimed":              false,
 			"github_jit_boundary_claimed":              false,
 		},
-		ClaimBoundary: "Provider-owned BETA.3 container-v1 source/static pre-B4 fixture. It binds exact target, ownership, secure defaults, supported pool.dataset.query + filesystem.put/stat rootfs staging, a credential-free container.create payload, one 0600 runtime credential file delivered only through the filesystem.put input pipe, temporary init, post-start desired-state scrub, credential-file deletion, execution markers, official runner identity and retirement semantics. The public fixture contains only the literal runtime-token placeholder, never a live credential. It does not claim callback/JIT, runtime admission, or per-runner memory isolation.",
+		ClaimBoundary: "Provider-owned BETA.3 container-v1 source/static pre-B4 fixture. It binds exact target, ownership, secure defaults, source-derived hidden rootfs projection plus supported filesystem.put/stat staging, a credential-free container.create payload, one 0600 runtime credential file delivered only through the filesystem.put input pipe, temporary init, post-start desired-state scrub, credential-file deletion, execution markers, official runner identity and retirement semantics. The public fixture contains only the literal runtime-token placeholder, never a live credential. It does not claim callback/JIT, runtime admission, or per-runner memory isolation.",
 	}
 
 	raw, err := json.MarshalIndent(fixture, "", "  ")
