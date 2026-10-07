@@ -40,6 +40,9 @@ set -eu
 
 mkdir -p /var/lib/garm-container
 printf 'init-wrapper-v1\\n' > /var/lib/garm-container/init-wrapper-executed
+GARM_INSTANCE_TOKEN="$(cat "/var/lib/garm-container/bootstrap-instance-token")"
+rm -f "/var/lib/garm-container/bootstrap-instance-token"
+export GARM_INSTANCE_TOKEN
 (
   printf 'bootstrap-child-v1\\n' > /var/lib/garm-container/bootstrap-child-started
   exec /usr/local/bin/garm-runner-bootstrap
