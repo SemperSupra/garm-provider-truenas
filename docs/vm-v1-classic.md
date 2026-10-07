@@ -67,8 +67,13 @@ The source explicitly skips `RAW` disks during clone, so a RAW-backed template
 must fail qualification rather than silently producing a diskless runner.
 
 The immutable template itself is deployment/Foundry state, not provider-owned
-ephemeral capacity. A runtime runner clone is provider-owned and must be
-distinguishable from the template and from foreign VMs.
+ephemeral capacity. The initial source is pinned to Canonical's dated Ubuntu
+24.04 release image `20260926`:
+`ubuntu-24.04-server-cloudimg-amd64.img`, SHA-256
+`6a81c37564db9b1ee84e141922625e1d7c5b389b99bb3c572e0243607d5bb4d2`.
+A runtime runner clone is provider-owned and must be distinguishable from the
+template and from foreign VMs. Floating `current` image identity is not an
+admission oracle.
 
 ## Bootstrap channel
 
@@ -90,10 +95,20 @@ against these invariants:
 6. the mechanism is supported through TrueNAS middleware plus normal guest
    interfaces, not direct libvirt/qemu mutation.
 
-A small per-instance NoCloud seed device is the conventional candidate. A
-preinstalled guest bootstrap agent plus another source-supported one-shot
-metadata channel may also be evaluated. No mechanism is accepted merely
-because it works in a raw QEMU experiment.
+The selected candidate is a per-instance NoCloud seed device, but it does not
+depend on a preinstalled GARM binary. The seed carries the non-secret runner
+bootstrap program and a small root launcher, creates a dedicated
+`garm-runner` system user, and places only the per-instance callback/metadata
+values and bootstrap token in a root-only one-shot environment file. The root
+launcher parses an exact key allowlist without `eval`, deletes that file, then
+drops to `garm-runner` before executing the shared runner bootstrap. This
+keeps the stock Ubuntu template credential-free and removes an otherwise
+undocumented baked-file dependency.
+
+The seed remains attached while the VM is active because supported TrueNAS
+`vm.device.delete` forbids live removal. The one-shot environment file,
+however, must be deleted before the runner process starts. Seed CDROM and
+dataset retirement still occurs only after the VM is stopped.
 
 ## Ownership and lifecycle
 
