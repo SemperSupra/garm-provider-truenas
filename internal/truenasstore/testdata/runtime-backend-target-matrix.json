@@ -193,13 +193,15 @@
           "source_blobs": {
             "src/middlewared/middlewared/plugins/container/container.py": "54111667692fa7beea67893b50149ef605a8ce22",
             "src/middlewared/middlewared/plugins/container/lifecycle.py": "1e29c7c3143d9adbd0cb8e03806a3d5f5ebe29e0",
-            "src/middlewared/middlewared/plugins/container/image.py": "43f01e991ceaacd46ca2292cc8cc6d460dc3dc7b"
+            "src/middlewared/middlewared/plugins/container/image.py": "43f01e991ceaacd46ca2292cc8cc6d460dc3dc7b",
+            "src/middlewared/middlewared/api/v26_0_0/container.py": "6c1d11b9d42d5bfc6dd242d77c017b7fbe1a26aa"
           },
-          "note": "First-class container API family; first implementation/real-system target.",
+          "note": "First-class container API family; first implementation/real-system target. Exact source exposes secure idmap, capability policy, init/initenv, image registry, default bridge networking and lifecycle. It does not expose an Apps-style per-container memory ceiling; do not advertise per-runner memory isolation. Any token-bearing bootstrap environment must be scrubbed from persisted desired state after start and independently verified before runtime admission.",
           "required_methods": [
             "system.version",
             "container.query",
             "container.create",
+            "container.update",
             "container.delete",
             "container.start",
             "container.stop",
