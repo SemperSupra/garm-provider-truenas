@@ -200,6 +200,13 @@ func (m *Manager) ReconcileBootstrap(ctx context.Context, providerID string) err
 	if strings.TrimSpace(item.SeedRef) == "" {
 		return nil
 	}
+	// TrueNAS vm.device.delete refuses device removal while the VM is active.
+	// Do not model an early live detach that the supported middleware cannot
+	// realize. Seed cleanup is therefore a stopped-state operation and is
+	// normally completed as part of runner retirement.
+	if !strings.EqualFold(item.State, "STOPPED") {
+		return provider.ErrUnsafeOperation
+	}
 	consumed, err := m.client.BootstrapConsumed(ctx, item.ID)
 	if err != nil {
 		return fmt.Errorf("observe bootstrap consumption: %w", err)

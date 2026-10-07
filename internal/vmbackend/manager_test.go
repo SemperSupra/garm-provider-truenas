@@ -168,7 +168,7 @@ func TestCreateClonesStoppedTemplateAndStagesSeed(t *testing.T) {
 	}
 }
 
-func TestBootstrapSeedCleanupRequiresIndependentConsumptionSignal(t *testing.T) {
+func TestBootstrapSeedCleanupRequiresStoppedStateAndConsumptionSignal(t *testing.T) {
 	client := newFakeClient()
 	manager, _ := New(client, "controller-1", client.version)
 	inst, err := manager.Create(context.Background(), bootstrap())
@@ -176,9 +176,15 @@ func TestBootstrapSeedCleanupRequiresIndependentConsumptionSignal(t *testing.T) 
 		t.Fatal(err)
 	}
 	if err := manager.ReconcileBootstrap(context.Background(), inst.ProviderID); !errors.Is(err, provider.ErrUnsafeOperation) {
-		t.Fatalf("expected fail-closed cleanup before consumption, got %v", err)
+		t.Fatalf("expected fail-closed cleanup while VM is active, got %v", err)
 	}
 	client.consumed[1] = true
+	if err := manager.ReconcileBootstrap(context.Background(), inst.ProviderID); !errors.Is(err, provider.ErrUnsafeOperation) {
+		t.Fatalf("expected active VM to block seed-device removal even after consumption, got %v", err)
+	}
+	if err := manager.Stop(context.Background(), inst.ProviderID); err != nil {
+		t.Fatal(err)
+	}
 	if err := manager.ReconcileBootstrap(context.Background(), inst.ProviderID); err != nil {
 		t.Fatal(err)
 	}

@@ -136,6 +136,27 @@ Potential future capabilities:
 
 Windows, GPU, and Docker-capable profiles require separate qualification evidence.
 
+### VM bootstrap storage contract
+
+The initial VM profile uses a source-bound NoCloud seed path rather than an
+unqualified guest-agent or host-shell shortcut:
+
+1. create a provider-owned per-runner child dataset through `pool.dataset.create`;
+2. upload the generated NoCloud ISO through the public `filesystem.put` job;
+3. attach it as a `vm.device` CDROM and independently read back the device;
+4. start the VM once;
+5. retain the seed while the VM is active, because supported `vm.device.delete`
+   rejects device removal from an active VM;
+6. on retirement, stop the VM, delete the owned CDROM device, delete the seed
+   dataset, verify device/dataset absence, then delete the VM and cloned boot
+   ZVOL.
+
+This deliberately rejects an earlier mock-only assumption that bootstrap media
+could be detached live after guest consumption. The seed contains bootstrap
+credentials, so the runtime qualification must also prove bounded ownership,
+non-world-readable storage, no foreign adoption, and final zero residue. Source
+support for these methods is not itself a runtime PASS.
+
 ## Qualified flavors, not arbitrary knobs
 
 GARM's provider-neutral abstraction already gives us `image`, `flavor`, `extra_specs`, `max_runners`, priorities, and bootstrap timeout. The TrueNAS provider should expose **qualified execution profiles**, not arbitrary raw CPU/RAM/security passthrough.
