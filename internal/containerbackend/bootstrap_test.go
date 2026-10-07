@@ -27,19 +27,30 @@ func TestBootstrapPlanStagesOnlyNonSecretFiles(t *testing.T) {
 	if planContainsToken(plan, in.Token) {
 		t.Fatal("one-time bootstrap token leaked into a staged file")
 	}
-	if len(plan.Files) != 2 {
-		t.Fatalf("expected two staged non-secret bootstrap files, got %d", len(plan.Files))
+	if len(plan.Files) != 3 {
+		t.Fatalf("expected two scripts plus one one-shot credential file, got %d", len(plan.Files))
 	}
+	credentialFiles := 0
 	for _, file := range plan.Files {
+		if len(file.SHA256) != 64 {
+			t.Fatalf("missing exact staged-file digest for %s: %q", file.Path, file.SHA256)
+		}
 		if file.ContainsSecret {
-			t.Fatalf("staged file unexpectedly marked secret: %s", file.Path)
+			credentialFiles++
+			if file.Path != BootstrapTokenPath || file.Mode != 0o600 || file.Content != in.Token {
+				t.Fatalf("unexpected credential-file contract: %#v", file)
+			}
+			continue
 		}
 		if file.Mode != 0o755 {
 			t.Fatalf("unexpected mode for %s: %#o", file.Path, file.Mode)
 		}
-		if len(file.SHA256) != 64 {
-			t.Fatalf("missing exact staged-file digest for %s: %q", file.Path, file.SHA256)
+		if strings.Contains(file.Content, in.Token) {
+			t.Fatalf("credential leaked into non-secret staged file %s", file.Path)
 		}
+	}
+	if credentialFiles != 1 {
+		t.Fatalf("expected exactly one credential-bearing staged file, got %d", credentialFiles)
 	}
 }
 
