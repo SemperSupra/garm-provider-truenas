@@ -11,20 +11,20 @@ import (
 )
 
 type nestedVMPreB4Fixture struct {
-	Schema            string                 `json:"schema"`
-	ProducerSource    string                 `json:"producer_source"`
-	Authority         string                 `json:"authority"`
-	Target            nestedVMTarget         `json:"target"`
-	Profile           string                 `json:"profile"`
-	TemplateFamily    string                 `json:"template_family"`
-	ExpectedName      string                 `json:"expected_name"`
-	ExpectedOwnership map[string]string      `json:"expected_ownership"`
-	Clone             nestedVMClone          `json:"clone"`
-	Seed              nestedVMSeed           `json:"seed"`
-	Retirement        []string               `json:"retirement"`
-	Runner             nestedVMRunner         `json:"runner"`
-	SourceOracles      map[string]bool        `json:"source_oracles"`
-	ClaimBoundary      string                 `json:"claim_boundary"`
+	Schema            string            `json:"schema"`
+	ProducerSource    string            `json:"producer_source"`
+	Authority         string            `json:"authority"`
+	Target            nestedVMTarget    `json:"target"`
+	Profile           string            `json:"profile"`
+	TemplateFamily    string            `json:"template_family"`
+	ExpectedName      string            `json:"expected_name"`
+	ExpectedOwnership map[string]string `json:"expected_ownership"`
+	Clone             nestedVMClone     `json:"clone"`
+	Seed              nestedVMSeed      `json:"seed"`
+	Retirement        []string          `json:"retirement"`
+	Runner            nestedVMRunner    `json:"runner"`
+	SourceOracles     map[string]bool   `json:"source_oracles"`
+	ClaimBoundary     string            `json:"claim_boundary"`
 }
 
 type nestedVMTarget struct {
@@ -182,26 +182,26 @@ func TestExportNestedVMPreB4Fixture(t *testing.T) {
 			ToolSHA256:   provider.RunnerToolSHA256,
 		},
 		SourceOracles: map[string]bool{
-			"exact_version_required":                  true,
-			"25_04_1_not_admitted":                   true,
-			"foreign_ownership_rejected":              true,
-			"fixed_cpu_memory_profile_required":       true,
-			"autostart_forbidden":                     true,
-			"zvol_template_clone_required":            true,
-			"supported_filesystem_put_required":       true,
-			"owned_seed_dataset_required":             true,
-			"owned_cdrom_required":                    true,
-			"active_seed_detach_forbidden":            true,
-			"bootstrap_consumption_signal_required":   true,
-			"seed_device_absence_required":            true,
-			"seed_dataset_absence_required":           true,
-			"final_vm_absence_required":               true,
-			"runtime_admission_claimed":               false,
-			"guest_boot_claimed":                      false,
-			"bootstrap_consumption_claimed":           false,
-			"github_jit_boundary_claimed":             false,
-			"docker_or_container_actions_claimed":     false,
-			"windows_or_gpu_claimed":                  false,
+			"exact_version_required":                true,
+			"25_04_1_not_admitted":                  true,
+			"foreign_ownership_rejected":            true,
+			"fixed_cpu_memory_profile_required":     true,
+			"autostart_forbidden":                   true,
+			"zvol_template_clone_required":          true,
+			"supported_filesystem_put_required":     true,
+			"owned_seed_dataset_required":           true,
+			"owned_cdrom_required":                  true,
+			"active_seed_detach_forbidden":          true,
+			"bootstrap_consumption_signal_required": true,
+			"seed_device_absence_required":          true,
+			"seed_dataset_absence_required":         true,
+			"final_vm_absence_required":             true,
+			"runtime_admission_claimed":             false,
+			"guest_boot_claimed":                    false,
+			"bootstrap_consumption_claimed":         false,
+			"github_jit_boundary_claimed":           false,
+			"docker_or_container_actions_claimed":   false,
+			"windows_or_gpu_claimed":                false,
 		},
 		ClaimBoundary: "Source/static BETA.3 classic vm-v1 pre-B4 fixture. It binds exact target/source identity, provider ownership, fixed 4-vCPU/8-GiB clone profile, immutable ZVOL-template family, NoCloud payload with only a literal run-local token placeholder, supported filesystem.put + vm.device + pool.dataset control surfaces, stopped-state seed retirement, and zero-residue requirements. It does not prove template availability, VM guest boot, bootstrap consumption, callback/JIT, GitHub registration, Docker/container-actions, Windows/GPU, physical TrueNAS, or operational runtime admission.",
 	}
