@@ -14,8 +14,11 @@ import (
 )
 
 const (
-	FlavorLinuxGeneral = "truenas-vm-linux-general"
-	TemplateFamily     = "ubuntu-24.04-amd64-template"
+	FlavorLinuxGeneral   = "truenas-vm-linux-general"
+	TemplateFamily       = "ubuntu-24.04-amd64-template"
+	TemplateVersion      = "ubuntu-24.04-release-20260926-amd64"
+	TemplateSourceURL    = "https://cloud-images.ubuntu.com/releases/noble/release-20260926/ubuntu-24.04-server-cloudimg-amd64.img"
+	TemplateSourceSHA256 = "6a81c37564db9b1ee84e141922625e1d7c5b389b99bb3c572e0243607d5bb4d2"
 )
 
 const vmBootstrapLauncher = `#!/bin/sh
@@ -182,7 +185,7 @@ func (m *Manager) Create(ctx context.Context, in provider.Bootstrap) (provider.I
 	if err != nil {
 		return provider.Instance{}, fmt.Errorf("resolve exact VM template: %w", err)
 	}
-	if template.Name != TemplateFamily || template.ID <= 0 || strings.TrimSpace(template.Version) == "" {
+	if template.Name != TemplateFamily || template.ID <= 0 || template.Version != TemplateVersion {
 		return provider.Instance{}, fmt.Errorf("template family/version did not resolve exactly: %w", provider.ErrManagedDrift)
 	}
 
@@ -460,7 +463,7 @@ func (m *Manager) verifyRuntime(item VM) error {
 	if item.Autostart || item.VCPUs != provider.GeneralCPU || item.MemoryBytes != provider.GeneralMemoryBytes {
 		return provider.ErrManagedDrift
 	}
-	if item.Template.Name != TemplateFamily || item.Template.ID <= 0 || strings.TrimSpace(item.Template.Version) == "" {
+	if item.Template.Name != TemplateFamily || item.Template.ID <= 0 || item.Template.Version != TemplateVersion {
 		return provider.ErrManagedDrift
 	}
 	switch strings.ToUpper(item.State) {
