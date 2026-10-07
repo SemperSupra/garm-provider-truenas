@@ -14,6 +14,8 @@ const (
 	BootstrapInitCommand      = "/bin/sh /usr/local/bin/garm-container-init"
 	BootstrapRunnerScriptPath = "/usr/local/bin/garm-runner-bootstrap"
 	BootstrapInitScriptPath   = "/usr/local/bin/garm-container-init"
+	InitWrapperMarkerPath      = "/var/lib/garm-container/init-wrapper-executed"
+	BootstrapChildMarkerPath   = "/var/lib/garm-container/bootstrap-child-started"
 )
 
 type StagedFile struct {
