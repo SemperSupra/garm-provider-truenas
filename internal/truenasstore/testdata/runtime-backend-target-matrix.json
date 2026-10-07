@@ -31,7 +31,15 @@
             "classification": "SUPPORTED",
             "oracle_satisfied": true,
             "provider_source": "14535745dc3aa3c0b5466da7c704bca4d23dcec5"
-          }
+          },
+          "required_methods": [
+            "system.version",
+            "app.create",
+            "app.query",
+            "app.config",
+            "app.stop",
+            "app.delete"
+          ]
         },
         "25.04.2.6": {
           "status": "PASS",
@@ -48,7 +56,15 @@
             "classification": "SUPPORTED",
             "oracle_satisfied": true,
             "provider_source": "14535745dc3aa3c0b5466da7c704bca4d23dcec5"
-          }
+          },
+          "required_methods": [
+            "system.version",
+            "app.create",
+            "app.query",
+            "app.config",
+            "app.stop",
+            "app.delete"
+          ]
         },
         "25.10.7": {
           "status": "PASS",
@@ -65,7 +81,15 @@
             "classification": "SUPPORTED",
             "oracle_satisfied": true,
             "provider_source": "14535745dc3aa3c0b5466da7c704bca4d23dcec5"
-          }
+          },
+          "required_methods": [
+            "system.version",
+            "app.create",
+            "app.query",
+            "app.config",
+            "app.stop",
+            "app.delete"
+          ]
         },
         "26.0.0-BETA.3": {
           "status": "PASS",
@@ -83,7 +107,15 @@
             "oracle_satisfied": true,
             "provider_source": "14535745dc3aa3c0b5466da7c704bca4d23dcec5",
             "scope": "stronger G4 capacity-two nested software evidence"
-          }
+          },
+          "required_methods": [
+            "system.version",
+            "app.create",
+            "app.query",
+            "app.config",
+            "app.stop",
+            "app.delete"
+          ]
         }
       }
     },
@@ -101,7 +133,17 @@
           "source_blobs": {
             "src/middlewared/middlewared/plugins/virt/instance.py": "87fc6bb365b3b09820331d90ed2c0138af41ce1b"
           },
-          "note": "Experimental/version-bound TrueNAS Instances container path; runtime support requires independent qualification."
+          "note": "Experimental/version-bound TrueNAS Instances container path; runtime support requires independent qualification.",
+          "required_methods": [
+            "system.version",
+            "virt.instance.query",
+            "virt.instance.create",
+            "virt.instance.delete",
+            "virt.instance.start",
+            "virt.instance.stop",
+            "virt.instance.restart",
+            "virt.instance.image_choices"
+          ]
         },
         "25.04.2.6": {
           "status": "OPEN",
@@ -111,7 +153,17 @@
           "source_blobs": {
             "src/middlewared/middlewared/plugins/virt/instance.py": "ac22db500d9d1c6932a4cc109716cd8a3bd46223"
           },
-          "note": "Experimental/version-bound TrueNAS Instances container path; runtime support requires independent qualification."
+          "note": "Experimental/version-bound TrueNAS Instances container path; runtime support requires independent qualification.",
+          "required_methods": [
+            "system.version",
+            "virt.instance.query",
+            "virt.instance.create",
+            "virt.instance.delete",
+            "virt.instance.start",
+            "virt.instance.stop",
+            "virt.instance.restart",
+            "virt.instance.image_choices"
+          ]
         },
         "25.10.7": {
           "status": "OPEN",
@@ -121,7 +173,17 @@
           "source_blobs": {
             "src/middlewared/middlewared/plugins/virt/instance.py": "8f3f21996b4d14385ba17405676704cb9b921bea"
           },
-          "note": "Experimental/version-bound TrueNAS Instances container path; runtime support requires independent qualification."
+          "note": "Experimental/version-bound TrueNAS Instances container path; runtime support requires independent qualification.",
+          "required_methods": [
+            "system.version",
+            "virt.instance.query",
+            "virt.instance.create",
+            "virt.instance.delete",
+            "virt.instance.start",
+            "virt.instance.stop",
+            "virt.instance.restart",
+            "virt.instance.image_choices"
+          ]
         },
         "26.0.0-BETA.3": {
           "status": "OPEN",
@@ -130,9 +192,19 @@
           "middleware_commit": "81e1265a86083888ba94a2bdfc02ff5c9c5ef6a3",
           "source_blobs": {
             "src/middlewared/middlewared/plugins/container/container.py": "54111667692fa7beea67893b50149ef605a8ce22",
-            "src/middlewared/middlewared/plugins/container/lifecycle.py": "1e29c7c3143d9adbd0cb8e03806a3d5f5ebe29e0"
+            "src/middlewared/middlewared/plugins/container/lifecycle.py": "1e29c7c3143d9adbd0cb8e03806a3d5f5ebe29e0",
+            "src/middlewared/middlewared/plugins/container/image.py": "43f01e991ceaacd46ca2292cc8cc6d460dc3dc7b"
           },
-          "note": "First-class container API family; first implementation/real-system target."
+          "note": "First-class container API family; first implementation/real-system target.",
+          "required_methods": [
+            "system.version",
+            "container.query",
+            "container.create",
+            "container.delete",
+            "container.start",
+            "container.stop",
+            "container.image.query_registry"
+          ]
         }
       }
     },
@@ -150,7 +222,16 @@
           "source_blobs": {
             "src/middlewared/middlewared/plugins/virt/instance.py": "87fc6bb365b3b09820331d90ed2c0138af41ce1b"
           },
-          "note": "Transitional Instances VM path exists in source but is deliberately outside the initial product support envelope."
+          "note": "Transitional Instances VM path exists in source but is deliberately outside the initial product support envelope.",
+          "required_methods": [
+            "system.version",
+            "virt.instance.query",
+            "virt.instance.create",
+            "virt.instance.delete",
+            "virt.instance.start",
+            "virt.instance.stop",
+            "virt.instance.restart"
+          ]
         },
         "25.04.2.6": {
           "status": "OPEN",
@@ -159,8 +240,18 @@
           "middleware_commit": "244b717370fe35fb9eefc3096acfbc25f12b57b6",
           "source_blobs": {
             "src/middlewared/middlewared/plugins/vm/vms.py": "993ed915c7058c8e8433d5d5592bb30f24cbfd1c",
-            "src/middlewared/middlewared/plugins/vm/lifecycle.py": "1d24abf29b1a24633854bac3f843f34e1718bac6"
-          }
+            "src/middlewared/middlewared/plugins/vm/vm_lifecycle.py": "85c5049c8c90572746ea1acf0a357a88afc88cb5"
+          },
+          "required_methods": [
+            "system.version",
+            "vm.query",
+            "vm.create",
+            "vm.delete",
+            "vm.start",
+            "vm.stop",
+            "vm.poweroff",
+            "vm.status"
+          ]
         },
         "25.10.7": {
           "status": "OPEN",
@@ -169,8 +260,18 @@
           "middleware_commit": "8ede398839710e56893d88ce85088139d8fab18e",
           "source_blobs": {
             "src/middlewared/middlewared/plugins/vm/vms.py": "2532f53d54d845e983c76e8479027587dec81df7",
-            "src/middlewared/middlewared/plugins/vm/lifecycle.py": "cedc596940ec0001bfa7102c01ae2f4d7c4b9a80"
-          }
+            "src/middlewared/middlewared/plugins/vm/vm_lifecycle.py": "85c5049c8c90572746ea1acf0a357a88afc88cb5"
+          },
+          "required_methods": [
+            "system.version",
+            "vm.query",
+            "vm.create",
+            "vm.delete",
+            "vm.start",
+            "vm.stop",
+            "vm.poweroff",
+            "vm.status"
+          ]
         },
         "26.0.0-BETA.3": {
           "status": "OPEN",
@@ -179,8 +280,18 @@
           "middleware_commit": "81e1265a86083888ba94a2bdfc02ff5c9c5ef6a3",
           "source_blobs": {
             "src/middlewared/middlewared/plugins/vm/vms.py": "43ed4b532b40da02ad885039d954c99a93ea22ed",
-            "src/middlewared/middlewared/plugins/vm/lifecycle.py": "54f961131eec5ff479b76ff1c15149d18a2ca579"
-          }
+            "src/middlewared/middlewared/plugins/vm/vm_lifecycle.py": "b313e2eeb0baa0179ab9244fc244eee9b02e02e9"
+          },
+          "required_methods": [
+            "system.version",
+            "vm.query",
+            "vm.create",
+            "vm.delete",
+            "vm.start",
+            "vm.stop",
+            "vm.poweroff",
+            "vm.status"
+          ]
         }
       }
     }

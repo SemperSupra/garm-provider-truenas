@@ -16,6 +16,7 @@ type runtimeBackendCell struct {
 	ControlSurface   string            `json:"control_surface"`
 	MiddlewareCommit string            `json:"middleware_commit"`
 	SourceBlobs      map[string]string `json:"source_blobs"`
+	RequiredMethods  []string          `json:"required_methods"`
 }
 
 type runtimeBackendEntry struct {
@@ -118,8 +119,8 @@ func TestRuntimeBackendTargetMatrixContract(t *testing.T) {
 			if cell.MiddlewareCommit != g5Commits[version] {
 				t.Fatalf("backend %s target %s middleware commit drifted: %s != %s", name, version, cell.MiddlewareCommit, g5Commits[version])
 			}
-			if cell.Driver == "" || cell.ControlSurface == "" || len(cell.SourceBlobs) == 0 {
-				t.Fatalf("backend %s target %s lacks source-bound driver metadata", name, version)
+			if cell.Driver == "" || cell.ControlSurface == "" || len(cell.SourceBlobs) == 0 || len(cell.RequiredMethods) == 0 {
+				t.Fatalf("backend %s target %s lacks source-bound driver/method metadata", name, version)
 			}
 		}
 	}
@@ -152,6 +153,9 @@ func TestRuntimeBackendTargetMatrixContract(t *testing.T) {
 		cell := matrix.Backends["vm"].TargetStatus[version]
 		if cell.Status != "OPEN" || cell.Driver != "vm-v1" || cell.ControlSurface != "vm.*" {
 			t.Fatalf("classic VM driver contract drifted at %s: %#v", version, cell)
+		}
+		if _, ok := cell.SourceBlobs["src/middlewared/middlewared/plugins/vm/vm_lifecycle.py"]; !ok {
+			t.Fatalf("classic VM row %s is not bound to the public start/stop lifecycle source", version)
 		}
 	}
 }
