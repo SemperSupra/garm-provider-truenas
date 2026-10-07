@@ -17,6 +17,9 @@ type nestedVMPreB4Fixture struct {
 	Target            nestedVMTarget    `json:"target"`
 	Profile           string            `json:"profile"`
 	TemplateFamily    string            `json:"template_family"`
+	TemplateVersion   string            `json:"template_version"`
+	TemplateSourceURL string            `json:"template_source_url"`
+	TemplateSourceSHA string            `json:"template_source_sha256"`
 	ExpectedName      string            `json:"expected_name"`
 	ExpectedOwnership map[string]string `json:"expected_ownership"`
 	Clone             nestedVMClone     `json:"clone"`
@@ -130,9 +133,12 @@ func TestExportNestedVMPreB4Fixture(t *testing.T) {
 			SourceBlobs:      cell.SourceBlobs,
 			Status:           cell.Status,
 		},
-		Profile:        FlavorLinuxGeneral,
-		TemplateFamily: TemplateFamily,
-		ExpectedName:   name,
+		Profile:           FlavorLinuxGeneral,
+		TemplateFamily:    TemplateFamily,
+		TemplateVersion:   TemplateVersion,
+		TemplateSourceURL: TemplateSourceURL,
+		TemplateSourceSHA: TemplateSourceSHA256,
+		ExpectedName:      name,
 		ExpectedOwnership: map[string]string{
 			"schema":        "semper-supra.garm-vm-owner/1",
 			"managed_by":    "garm-provider-truenas",
@@ -189,7 +195,10 @@ func TestExportNestedVMPreB4Fixture(t *testing.T) {
 			"autostart_forbidden":                   true,
 			"zvol_template_clone_required":          true,
 			"supported_filesystem_put_required":     true,
-			"owned_seed_dataset_required":           true,
+			"stock_template_source_exact":            true,
+			"self_contained_nocloud_bootstrap":       true,
+			"unprivileged_runner_required":           true,
+			"owned_seed_dataset_required":            true,
 			"owned_cdrom_required":                  true,
 			"active_seed_detach_forbidden":          true,
 			"bootstrap_consumption_signal_required": true,
@@ -203,7 +212,7 @@ func TestExportNestedVMPreB4Fixture(t *testing.T) {
 			"docker_or_container_actions_claimed":   false,
 			"windows_or_gpu_claimed":                false,
 		},
-		ClaimBoundary: "Source/static BETA.3 classic vm-v1 pre-B4 fixture. It binds exact target/source identity, provider ownership, fixed 4-vCPU/8-GiB clone profile, immutable ZVOL-template family, NoCloud payload with only a literal run-local token placeholder, supported filesystem.put + vm.device + pool.dataset control surfaces, stopped-state seed retirement, and zero-residue requirements. It does not prove template availability, VM guest boot, bootstrap consumption, callback/JIT, GitHub registration, Docker/container-actions, Windows/GPU, physical TrueNAS, or operational runtime admission.",
+		ClaimBoundary: "Source/static BETA.3 classic vm-v1 pre-B4 fixture. It binds exact target/source identity, provider ownership, fixed 4-vCPU/8-GiB clone profile, a dated SHA256-pinned stock Ubuntu 24.04 cloud-image template, self-contained NoCloud bootstrap scripts with only a literal run-local token placeholder, supported filesystem.put + vm.device + pool.dataset control surfaces, stopped-state seed retirement, and zero-residue requirements. It does not prove template availability, VM guest boot, bootstrap consumption, callback/JIT, GitHub registration, Docker/container-actions, Windows/GPU, physical TrueNAS, or operational runtime admission.",
 	}
 
 	raw, err := json.MarshalIndent(fixture, "", "  ")
