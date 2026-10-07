@@ -14,7 +14,7 @@ func TestClassicVMV1SourceContractIsExplicitAndStillOpen(t *testing.T) {
 		"25.10.7": {
 			"src/middlewared/middlewared/api/v25_10_5/vm.py":        "2dad2a7e851d354bc9d6e1d201781b2809e77894",
 			"src/middlewared/middlewared/api/v25_10_5/vm_device.py": "01250cc4187582f124501b958e512f4db49c561f",
-			"src/middlewared/middlewared/plugins/vm/clone.py":        "03d0b4dbad81eada1747308ddd73417e710e29c9",
+			"src/middlewared/middlewared/plugins/vm/clone.py":       "03d0b4dbad81eada1747308ddd73417e710e29c9",
 		},
 		"26.0.0-BETA.3": {
 			"src/middlewared/middlewared/api/v26_0_0/vm.py":        "0944382fedc0a8cbcfc55fb8a653a9e5758e88fd",
