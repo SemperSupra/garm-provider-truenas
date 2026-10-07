@@ -10,11 +10,11 @@ import (
 )
 
 type fakeClient struct {
-	version      string
-	image        Image
-	items        map[int]Container
-	nextID       int
-	updateErr    error
+	version       string
+	image         Image
+	items         map[int]Container
+	nextID        int
+	updateErr     error
 	preserveToken bool
 }
 
@@ -27,7 +27,7 @@ func newFakeClient() *fakeClient {
 	}
 }
 
-func (f *fakeClient) SystemVersion(context.Context) (string, error) { return f.version, nil }
+func (f *fakeClient) SystemVersion(context.Context) (string, error)       { return f.version, nil }
 func (f *fakeClient) ResolveImage(context.Context, string) (Image, error) { return f.image, nil }
 func (f *fakeClient) GetByName(_ context.Context, name string) (Container, error) {
 	for _, item := range f.items {
