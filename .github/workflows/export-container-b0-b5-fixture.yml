@@ -76,7 +76,7 @@ jobs:
           test -s "$GARM_CONTAINER_FIXTURE_OUT"
 
           jq -e --arg source "${{ steps.source.outputs.ref }}" '
-            .schema == "semper-supra.garm-provider-truenas-container-pre-b4-fixture/2" and
+            .schema == "semper-supra.garm-provider-truenas-container-pre-b4-fixture/3" and
             .producer_source == $source and
             .authority == "SemperSupra/garm-provider-truenas-private#43" and
             .target.version == "26.0.0-BETA.3" and
@@ -91,17 +91,23 @@ jobs:
             .desired_create.idmap_type == "DEFAULT" and
             .desired_create.capabilities_policy == "DEFAULT" and
             .desired_create.init == "/bin/sh /usr/local/bin/garm-container-init" and
-            .desired_create.initenv.GARM_INSTANCE_TOKEN == "__RUN_LOCAL_INSTANCE_TOKEN__" and
+            (.desired_create.initenv | has("GARM_INSTANCE_TOKEN") | not) and
             .desired_create.initenv.RUNNER_ALLOW_RUNASROOT == "1" and
             .expected_post_start.init == "/sbin/init" and
             (.expected_post_start.initenv | length) == 0 and
-            (.staged_files | length) == 2 and
+            (.staged_files | length) == 3 and
             .execution_markers == ["/var/lib/garm-container/init-wrapper-executed", "/var/lib/garm-container/bootstrap-child-started"] and
-            ([.staged_files[].contains_secret] | all(. == false)) and
-            ([.staged_files[].sha256] | all(test("^[0-9a-f]{64}$"))) and
+            ([.staged_files[] | select(.contains_secret == true)] | length) == 1 and
+            ([.staged_files[] | select(.contains_secret == true)][0].path) == "/var/lib/garm-container/bootstrap-instance-token" and
+            ([.staged_files[] | select(.contains_secret == true)][0].mode) == 384 and
+            ([.staged_files[] | select(.contains_secret == true)][0].content) == "__RUN_LOCAL_INSTANCE_TOKEN__" and
+            ([.staged_files[] | select(.contains_secret == false)] | length) == 2 and
+            ([.staged_files[] | select(.contains_secret == false) | .sha256] | all(test("^[0-9a-f]{64}$"))) and
             .source_oracles.supported_rootfs_staging_defined == true and
+            .source_oracles.create_arguments_credential_free == true and
+            .source_oracles.credential_pipe_staging_required == true and
+            .source_oracles.credential_file_delete_required == true and
             .source_oracles.temporary_init_scrub_required == true and
-            .source_oracles.persisted_bootstrap_token_scrub_required == true and
             .source_oracles.runner_root_under_default_idmap_explicit == true and
             .source_oracles.external_restart_forbidden == true and
             .source_oracles.active_delete_refused == true and
