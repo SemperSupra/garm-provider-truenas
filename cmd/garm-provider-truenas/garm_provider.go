@@ -49,6 +49,18 @@ type config struct {
 	TrueNAS   *trueNASConfig `json:"truenas,omitempty"`
 }
 
+type instanceManager interface {
+	Create(context.Context, provider.Bootstrap) (provider.Instance, error)
+	Get(context.Context, string) (provider.Instance, error)
+	List(context.Context, string) ([]provider.Instance, error)
+	Delete(context.Context, string) error
+	Start(context.Context, string) error
+	Stop(context.Context, string) error
+	RemoveAll(context.Context) error
+}
+
+var _ instanceManager = (*provider.Manager)(nil)
+
 type externalProvider struct {
 	cfg          config
 	configPath   string
@@ -69,7 +81,7 @@ func newExternalProvider(configPath, controllerID string) (*externalProvider, er
 	return &externalProvider{cfg: cfg, configPath: configPath, controllerID: controllerID}, nil
 }
 
-func (p *externalProvider) manager(ctx context.Context) (*provider.Manager, func() error, error) {
+func (p *externalProvider) manager(ctx context.Context) (instanceManager, func() error, error) {
 	var backend provider.Client
 	var closeBackend func() error
 
