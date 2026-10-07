@@ -17,6 +17,7 @@ type runtimeBackendCell struct {
 	MiddlewareCommit string            `json:"middleware_commit"`
 	SourceBlobs      map[string]string `json:"source_blobs"`
 	RequiredMethods  []string          `json:"required_methods"`
+	Note             string            `json:"note,omitempty"`
 }
 
 type runtimeBackendEntry struct {
