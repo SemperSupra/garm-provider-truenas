@@ -21,7 +21,7 @@ type nestedContainerPreB4Fixture struct {
 	ExpectedOwnership map[string]string            `json:"expected_ownership"`
 	DesiredCreate     nestedContainerDesiredCreate `json:"desired_create"`
 	StagedFiles       []StagedFile                 `json:"staged_files"`
-	ExpectedPostStart nestedContainerPostStart      `json:"expected_post_start"`
+	ExpectedPostStart nestedContainerPostStart     `json:"expected_post_start"`
 	Runner            nestedContainerRunner        `json:"runner"`
 	SourceOracles     map[string]bool              `json:"source_oracles"`
 	ClaimBoundary     string                       `json:"claim_boundary"`
