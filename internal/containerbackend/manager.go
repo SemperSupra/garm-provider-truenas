@@ -7,6 +7,8 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"path"
+	"reflect"
 	"strings"
 
 	"github.com/SemperSupra/garm-provider-truenas/internal/provider"
@@ -28,10 +30,12 @@ type Container struct {
 	Name               string
 	Description        string
 	State              string
+	Dataset            string
 	Image              Image
 	Autostart          bool
 	IDMapType          string
 	CapabilitiesPolicy string
+	Init               string
 	InitEnv            map[string]string
 }
 
@@ -42,11 +46,18 @@ type CreateSpec struct {
 	Autostart          bool
 	IDMapType          string
 	CapabilitiesPolicy string
+	Init               string
 	InitEnv            map[string]string
 }
 
 type UpdateSpec struct {
+	Init    string
 	InitEnv map[string]string
+}
+
+type FileStat struct {
+	Size int64
+	Mode int
 }
 
 type Client interface {
@@ -57,6 +68,9 @@ type Client interface {
 	List(context.Context) ([]Container, error)
 	Create(context.Context, CreateSpec) (Container, error)
 	Update(context.Context, int, UpdateSpec) (Container, error)
+	ResolveDatasetMountpoint(context.Context, string) (string, error)
+	PutFile(context.Context, string, []byte, int) error
+	StatFile(context.Context, string) (FileStat, error)
 	Start(context.Context, int) error
 	Stop(context.Context, int, bool) error
 	Delete(context.Context, int) error
@@ -135,7 +149,7 @@ func (m *Manager) Create(ctx context.Context, in provider.Bootstrap) (provider.I
 		return provider.Instance{}, err
 	}
 
-	initialEnv := bootstrapEnv(in)
+	plan := buildBootstrapPlan(in)
 	created, err := m.client.Create(ctx, CreateSpec{
 		Name:               name,
 		Description:        desc,
@@ -143,42 +157,125 @@ func (m *Manager) Create(ctx context.Context, in provider.Bootstrap) (provider.I
 		Autostart:          false,
 		IDMapType:          "DEFAULT",
 		CapabilitiesPolicy: "DEFAULT",
-		InitEnv:            initialEnv,
+		Init:               plan.Init,
+		InitEnv:            cloneEnv(plan.InitEnv),
 	})
 	if err != nil {
 		return provider.Instance{}, fmt.Errorf("create container: %w", err)
 	}
-	if err := m.verifyOwnership(created, in.PoolID); err != nil {
+	if err := m.verifyBootstrapOwnership(created, in.PoolID, plan); err != nil {
 		return provider.Instance{}, err
 	}
-	if strings.EqualFold(created.State, "RUNNING") {
-		return provider.Instance{}, fmt.Errorf("new container unexpectedly started before bootstrap admission: %w", provider.ErrManagedDrift)
+	if !strings.EqualFold(created.State, "STOPPED") {
+		return provider.Instance{}, fmt.Errorf("new container unexpectedly active before bootstrap admission: %w", provider.ErrManagedDrift)
+	}
+
+	mountpoint, err := m.stageBootstrapFiles(ctx, created, plan)
+	if err != nil {
+		_ = m.cleanupFailedCreate(ctx, created.ID)
+		return provider.Instance{}, err
 	}
 
 	if err := m.client.Start(ctx, created.ID); err != nil {
+		_ = m.cleanupFailedCreate(ctx, created.ID)
 		return provider.Instance{}, fmt.Errorf("start container: %w", err)
 	}
 
-	scrubbed := cloneEnv(initialEnv)
-	delete(scrubbed, "GARM_INSTANCE_TOKEN")
-	if _, err := m.client.Update(ctx, created.ID, UpdateSpec{InitEnv: scrubbed}); err != nil {
-		return provider.Instance{}, fmt.Errorf("scrub persisted bootstrap token: %w", err)
+	if _, err := m.client.Update(ctx, created.ID, UpdateSpec{
+		Init:    plan.FinalInit,
+		InitEnv: cloneEnv(plan.FinalEnv),
+	}); err != nil {
+		_ = m.cleanupFailedCreate(ctx, created.ID)
+		return provider.Instance{}, fmt.Errorf("scrub persisted bootstrap desired state: %w", err)
 	}
 
 	observed, err := m.client.Get(ctx, created.ID)
 	if err != nil {
+		_ = m.cleanupFailedCreate(ctx, created.ID)
 		return provider.Instance{}, fmt.Errorf("read back scrubbed container: %w", err)
 	}
 	if err := m.verifyOwnership(observed, in.PoolID); err != nil {
+		_ = m.cleanupFailedCreate(ctx, created.ID)
 		return provider.Instance{}, err
 	}
-	if tokenPresent(observed.InitEnv, in.Token) {
-		return provider.Instance{}, fmt.Errorf("bootstrap token remains in persisted container desired state: %w", provider.ErrManagedDrift)
-	}
 	if !strings.EqualFold(observed.State, "RUNNING") {
+		_ = m.cleanupFailedCreate(ctx, created.ID)
 		return provider.Instance{}, fmt.Errorf("container did not remain running after bootstrap-state scrub: %w", provider.ErrManagedDrift)
 	}
+	tokenPath := path.Join(mountpoint, strings.TrimPrefix(BootstrapTokenPath, "/"))
+	if _, err := m.client.StatFile(ctx, tokenPath); !errors.Is(err, provider.ErrNotFound) {
+		_ = m.cleanupFailedCreate(ctx, created.ID)
+		if err == nil {
+			return provider.Instance{}, fmt.Errorf("bootstrap token file remains after init wrapper execution: %w", provider.ErrManagedDrift)
+		}
+		return provider.Instance{}, fmt.Errorf("verify bootstrap token file absence: %w", err)
+	}
 	return toInstance(observed, in.PoolID), nil
+}
+
+func (m *Manager) stageBootstrapFiles(ctx context.Context, item Container, plan BootstrapPlan) (string, error) {
+	if strings.TrimSpace(item.Dataset) == "" {
+		return "", fmt.Errorf("container dataset missing from create read-back: %w", provider.ErrManagedDrift)
+	}
+	mountpoint, err := m.client.ResolveDatasetMountpoint(ctx, item.Dataset)
+	if err != nil {
+		return "", fmt.Errorf("resolve container root dataset mountpoint: %w", err)
+	}
+	mountpoint = path.Clean(strings.TrimSpace(mountpoint))
+	if !strings.HasPrefix(mountpoint, "/mnt/") || mountpoint == "/mnt" {
+		return "", fmt.Errorf("unsafe container root mountpoint %q: %w", mountpoint, provider.ErrManagedDrift)
+	}
+
+	for _, file := range plan.Files {
+		relative := strings.TrimPrefix(path.Clean(file.Path), "/")
+		if relative == "." || relative == "" || relative == ".." || strings.HasPrefix(relative, "../") {
+			return "", fmt.Errorf("unsafe staged file path %q: %w", file.Path, provider.ErrUnsafeOperation)
+		}
+		fullPath := path.Join(mountpoint, relative)
+		if !strings.HasPrefix(fullPath, mountpoint+"/") {
+			return "", fmt.Errorf("staged file escaped container root %q: %w", fullPath, provider.ErrUnsafeOperation)
+		}
+		if file.ContainsSecret && (file.Path != BootstrapTokenPath || file.Mode != 0o600) {
+			return "", fmt.Errorf("refusing unbounded secret-bearing bootstrap file %q: %w", file.Path, provider.ErrUnsafeOperation)
+		}
+		if err := m.client.PutFile(ctx, fullPath, []byte(file.Content), file.Mode); err != nil {
+			return "", fmt.Errorf("stage bootstrap file %q: %w", file.Path, err)
+		}
+		stat, err := m.client.StatFile(ctx, fullPath)
+		if err != nil {
+			return "", fmt.Errorf("read back bootstrap file %q: %w", file.Path, err)
+		}
+		if stat.Size != int64(len(file.Content)) || stat.Mode&0o777 != file.Mode {
+			return "", fmt.Errorf("bootstrap file read-back drift for %q: %w", file.Path, provider.ErrManagedDrift)
+		}
+	}
+	return mountpoint, nil
+}
+
+func (m *Manager) cleanupFailedCreate(ctx context.Context, id int) error {
+	item, err := m.client.Get(ctx, id)
+	if errors.Is(err, provider.ErrNotFound) {
+		return nil
+	}
+	if err != nil {
+		return err
+	}
+	if strings.EqualFold(item.State, "RUNNING") {
+		if err := m.client.Stop(ctx, id, true); err != nil {
+			return err
+		}
+	}
+	item, err = m.client.Get(ctx, id)
+	if errors.Is(err, provider.ErrNotFound) {
+		return nil
+	}
+	if err != nil {
+		return err
+	}
+	if !strings.EqualFold(item.State, "STOPPED") {
+		return provider.ErrActive
+	}
+	return m.client.Delete(ctx, id)
 }
 
 func (m *Manager) Get(ctx context.Context, providerID string) (provider.Instance, error) {
@@ -213,7 +310,7 @@ func (m *Manager) List(ctx context.Context, poolID string) ([]provider.Instance,
 		if poolID != "" && owner.PoolID != poolID {
 			continue
 		}
-		if err := m.verifyRuntime(item); err != nil {
+		if err := m.verifySteadyRuntime(item); err != nil {
 			return nil, err
 		}
 		out = append(out, toInstance(item, owner.PoolID))
@@ -334,7 +431,35 @@ func (m *Manager) verifyOwnership(item Container, poolID string) error {
 	return nil
 }
 
+func (m *Manager) verifyBootstrapOwnership(item Container, poolID string, plan BootstrapPlan) error {
+	owner, err := m.decodeOwnedIdentity(item)
+	if err != nil {
+		return err
+	}
+	if poolID != "" && owner.PoolID != poolID {
+		return fmt.Errorf("pool mismatch: %w", provider.ErrForeign)
+	}
+	if err := m.verifyBaseRuntime(item); err != nil {
+		return err
+	}
+	if item.Init != plan.Init || !reflect.DeepEqual(item.InitEnv, plan.InitEnv) {
+		return fmt.Errorf("bootstrap desired state drift: %w", provider.ErrManagedDrift)
+	}
+	return nil
+}
+
 func (m *Manager) owner(item Container) (ownership, error) {
+	owner, err := m.decodeOwnedIdentity(item)
+	if err != nil {
+		return ownership{}, err
+	}
+	if err := m.verifySteadyRuntime(item); err != nil {
+		return ownership{}, err
+	}
+	return owner, nil
+}
+
+func (m *Manager) decodeOwnedIdentity(item Container) (ownership, error) {
 	owner, err := decodeOwnership(item.Description)
 	if err != nil {
 		return ownership{}, provider.ErrForeign
@@ -345,14 +470,14 @@ func (m *Manager) owner(item Container) (ownership, error) {
 		owner.Profile != FlavorLinuxGeneral {
 		return ownership{}, provider.ErrForeign
 	}
-	if err := m.verifyRuntime(item); err != nil {
-		return ownership{}, err
-	}
 	return owner, nil
 }
 
-func (m *Manager) verifyRuntime(item Container) error {
+func (m *Manager) verifyBaseRuntime(item Container) error {
 	if item.Autostart || item.IDMapType != "DEFAULT" || item.CapabilitiesPolicy != "DEFAULT" {
+		return provider.ErrManagedDrift
+	}
+	if strings.TrimSpace(item.Dataset) == "" {
 		return provider.ErrManagedDrift
 	}
 	if item.Image.Name != ImageFamily || strings.TrimSpace(item.Image.Version) == "" {
@@ -364,6 +489,16 @@ func (m *Manager) verifyRuntime(item Container) error {
 	default:
 		return provider.ErrManagedDrift
 	}
+}
+
+func (m *Manager) verifySteadyRuntime(item Container) error {
+	if err := m.verifyBaseRuntime(item); err != nil {
+		return err
+	}
+	if item.Init != DefaultInit || len(item.InitEnv) != 0 {
+		return provider.ErrManagedDrift
+	}
+	return nil
 }
 
 func validateBootstrap(in provider.Bootstrap) error {

@@ -11,19 +11,21 @@ import (
 )
 
 type nestedContainerPreB4Fixture struct {
-	Schema                   string                       `json:"schema"`
-	ProducerSource           string                       `json:"producer_source"`
-	Authority                string                       `json:"authority"`
-	Target                   nestedContainerTarget        `json:"target"`
-	Profile                  string                       `json:"profile"`
-	ImageFamily              string                       `json:"image_family"`
-	ExpectedName             string                       `json:"expected_name"`
-	ExpectedOwnership        map[string]string            `json:"expected_ownership"`
-	DesiredCreate            nestedContainerDesiredCreate `json:"desired_create"`
-	ExpectedPostStartInitEnv map[string]string            `json:"expected_post_start_initenv"`
-	Runner                   nestedContainerRunner        `json:"runner"`
-	SourceOracles            map[string]bool              `json:"source_oracles"`
-	ClaimBoundary            string                       `json:"claim_boundary"`
+	Schema            string                       `json:"schema"`
+	ProducerSource    string                       `json:"producer_source"`
+	Authority         string                       `json:"authority"`
+	Target            nestedContainerTarget        `json:"target"`
+	Profile           string                       `json:"profile"`
+	ImageFamily       string                       `json:"image_family"`
+	ExpectedName      string                       `json:"expected_name"`
+	ExpectedOwnership map[string]string            `json:"expected_ownership"`
+	DesiredCreate     nestedContainerDesiredCreate `json:"desired_create"`
+	StagedFiles       []StagedFile                 `json:"staged_files"`
+	ExecutionMarkers  []string                     `json:"execution_markers"`
+	ExpectedPostStart nestedContainerPostStart     `json:"expected_post_start"`
+	Runner            nestedContainerRunner        `json:"runner"`
+	SourceOracles     map[string]bool              `json:"source_oracles"`
+	ClaimBoundary     string                       `json:"claim_boundary"`
 }
 
 type nestedContainerTarget struct {
@@ -42,7 +44,13 @@ type nestedContainerDesiredCreate struct {
 	Autostart          bool              `json:"autostart"`
 	IDMapType          string            `json:"idmap_type"`
 	CapabilitiesPolicy string            `json:"capabilities_policy"`
+	Init               string            `json:"init"`
 	InitEnv            map[string]string `json:"initenv"`
+}
+
+type nestedContainerPostStart struct {
+	Init    string            `json:"init"`
+	InitEnv map[string]string `json:"initenv"`
 }
 
 type nestedContainerRunner struct {
@@ -76,8 +84,8 @@ func TestExportNestedContainerPreB4Fixture(t *testing.T) {
 		Arch:        "amd64",
 		Flavor:      FlavorLinuxGeneral,
 		PoolID:      "nested-container-pool",
-		CallbackURL: "https://127.0.0.1:9443/callback",
-		MetadataURL: "https://127.0.0.1:9443/metadata",
+		CallbackURL: "http://10.47.214.1:9443/callback",
+		MetadataURL: "http://10.47.214.1:9443/metadata",
 		Token:       "__RUN_LOCAL_INSTANCE_TOKEN__",
 	}
 	if err := validateBootstrap(in); err != nil {
@@ -94,12 +102,13 @@ func TestExportNestedContainerPreB4Fixture(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	initial := bootstrapEnv(in)
-	scrubbed := cloneEnv(initial)
-	delete(scrubbed, "GARM_INSTANCE_TOKEN")
+	plan := buildBootstrapPlan(in)
+	if planContainsToken(plan, in.Token) {
+		t.Fatal("bootstrap token leaked into staged file content")
+	}
 
 	fixture := nestedContainerPreB4Fixture{
-		Schema:         "semper-supra.garm-provider-truenas-container-pre-b4-fixture/1",
+		Schema:         "semper-supra.garm-provider-truenas-container-pre-b4-fixture/3",
 		ProducerSource: producer,
 		Authority:      "SemperSupra/garm-provider-truenas-private#43",
 		Target: nestedContainerTarget{
@@ -128,9 +137,15 @@ func TestExportNestedContainerPreB4Fixture(t *testing.T) {
 			Autostart:          false,
 			IDMapType:          "DEFAULT",
 			CapabilitiesPolicy: "DEFAULT",
-			InitEnv:            initial,
+			Init:               plan.Init,
+			InitEnv:            plan.InitEnv,
 		},
-		ExpectedPostStartInitEnv: scrubbed,
+		StagedFiles:      plan.Files,
+		ExecutionMarkers: []string{InitWrapperMarkerPath, BootstrapChildMarkerPath},
+		ExpectedPostStart: nestedContainerPostStart{
+			Init:    plan.FinalInit,
+			InitEnv: plan.FinalEnv,
+		},
 		Runner: nestedContainerRunner{
 			ToolURL:      provider.RunnerToolURL,
 			ToolFilename: provider.RunnerToolFilename,
@@ -139,8 +154,12 @@ func TestExportNestedContainerPreB4Fixture(t *testing.T) {
 		SourceOracles: map[string]bool{
 			"exact_version_required":                   true,
 			"foreign_ownership_rejected":               true,
-			"create_stopped_then_start_once":           true,
-			"persisted_bootstrap_token_scrub_required": true,
+			"supported_rootfs_staging_defined":         true,
+			"create_arguments_credential_free":         true,
+			"credential_pipe_staging_required":         true,
+			"credential_file_delete_required":          true,
+			"temporary_init_scrub_required":            true,
+			"runner_root_under_default_idmap_explicit": true,
 			"external_restart_forbidden":               true,
 			"active_delete_refused":                    true,
 			"final_absence_required":                   true,
@@ -149,7 +168,7 @@ func TestExportNestedContainerPreB4Fixture(t *testing.T) {
 			"bootstrap_execution_claimed":              false,
 			"github_jit_boundary_claimed":              false,
 		},
-		ClaimBoundary: "Provider-owned BETA.3 container-v1 B0-B3/B5 pre-B4 fixture only. It binds exact target, desired lifecycle, ownership, security defaults, persisted-token scrub intent and retirement semantics. It explicitly does not claim that stock Ubuntu consumes the bootstrap environment, executes the runner bootstrap, reaches the GitHub/JIT boundary, or provides per-runner memory isolation. B4 remains OPEN until a supported init/credential path is independently qualified.",
+		ClaimBoundary: "Provider-owned BETA.3 container-v1 source/static pre-B4 fixture. It binds exact target, ownership, secure defaults, supported pool.dataset.query + filesystem.put/stat rootfs staging, a credential-free container.create payload, one 0600 runtime credential file delivered only through the filesystem.put input pipe, temporary init, post-start desired-state scrub, credential-file deletion, execution markers, official runner identity and retirement semantics. The public fixture contains only the literal runtime-token placeholder, never a live credential. It does not claim callback/JIT, runtime admission, or per-runner memory isolation.",
 	}
 
 	raw, err := json.MarshalIndent(fixture, "", "  ")

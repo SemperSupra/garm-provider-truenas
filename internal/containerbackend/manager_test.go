@@ -9,13 +9,19 @@ import (
 	"github.com/SemperSupra/garm-provider-truenas/internal/provider"
 )
 
+type fakeFile struct {
+	content []byte
+	mode    int
+}
+
 type fakeClient struct {
 	version       string
 	image         Image
 	items         map[int]Container
+	files         map[string]fakeFile
 	nextID        int
-	updateErr     error
-	preserveToken bool
+	preserveState bool
+	badMountpoint bool
 }
 
 func newFakeClient() *fakeClient {
@@ -23,6 +29,7 @@ func newFakeClient() *fakeClient {
 		version: "TrueNAS-26.0.0-BETA.3",
 		image:   Image{Name: ImageFamily, Version: "20261001_07:42"},
 		items:   map[int]Container{},
+		files:   map[string]fakeFile{},
 		nextID:  1,
 	}
 }
@@ -56,25 +63,41 @@ func (f *fakeClient) Create(_ context.Context, spec CreateSpec) (Container, erro
 	f.nextID++
 	item := Container{
 		ID: id, Name: spec.Name, Description: spec.Description, State: "STOPPED",
-		Image: spec.Image, Autostart: spec.Autostart, IDMapType: spec.IDMapType,
-		CapabilitiesPolicy: spec.CapabilitiesPolicy, InitEnv: cloneEnv(spec.InitEnv),
+		Dataset: "tank/.truenas_containers/containers/" + spec.Name,
+		Image:   spec.Image, Autostart: spec.Autostart, IDMapType: spec.IDMapType,
+		CapabilitiesPolicy: spec.CapabilitiesPolicy, Init: spec.Init, InitEnv: cloneEnv(spec.InitEnv),
 	}
 	f.items[id] = item
 	return item, nil
 }
 func (f *fakeClient) Update(_ context.Context, id int, spec UpdateSpec) (Container, error) {
-	if f.updateErr != nil {
-		return Container{}, f.updateErr
-	}
 	item, ok := f.items[id]
 	if !ok {
 		return Container{}, provider.ErrNotFound
 	}
-	if !f.preserveToken {
+	if !f.preserveState {
+		item.Init = spec.Init
 		item.InitEnv = cloneEnv(spec.InitEnv)
+		f.items[id] = item
 	}
-	f.items[id] = item
 	return item, nil
+}
+func (f *fakeClient) ResolveDatasetMountpoint(_ context.Context, dataset string) (string, error) {
+	if f.badMountpoint {
+		return "/etc", nil
+	}
+	return "/mnt/" + dataset, nil
+}
+func (f *fakeClient) PutFile(_ context.Context, p string, content []byte, mode int) error {
+	f.files[p] = fakeFile{content: append([]byte(nil), content...), mode: mode}
+	return nil
+}
+func (f *fakeClient) StatFile(_ context.Context, p string) (FileStat, error) {
+	file, ok := f.files[p]
+	if !ok {
+		return FileStat{}, provider.ErrNotFound
+	}
+	return FileStat{Size: int64(len(file.content)), Mode: file.mode}, nil
 }
 func (f *fakeClient) Start(_ context.Context, id int) error {
 	item, ok := f.items[id]
@@ -83,6 +106,12 @@ func (f *fakeClient) Start(_ context.Context, id int) error {
 	}
 	item.State = "RUNNING"
 	f.items[id] = item
+	if item.Init == BootstrapInitCommand {
+		root := "/mnt/" + item.Dataset
+		delete(f.files, root+BootstrapTokenPath)
+		f.files[root+InitWrapperMarkerPath] = fakeFile{content: []byte("init-wrapper-v1\n"), mode: 0o644}
+		f.files[root+BootstrapChildMarkerPath] = fakeFile{content: []byte("bootstrap-child-v1\n"), mode: 0o644}
+	}
 	return nil
 }
 func (f *fakeClient) Stop(_ context.Context, id int, _ bool) error {
@@ -94,10 +123,7 @@ func (f *fakeClient) Stop(_ context.Context, id int, _ bool) error {
 	f.items[id] = item
 	return nil
 }
-func (f *fakeClient) Delete(_ context.Context, id int) error {
-	delete(f.items, id)
-	return nil
-}
+func (f *fakeClient) Delete(_ context.Context, id int) error { delete(f.items, id); return nil }
 
 func bootstrap() provider.Bootstrap {
 	return provider.Bootstrap{
@@ -107,7 +133,7 @@ func bootstrap() provider.Bootstrap {
 	}
 }
 
-func TestCreateStartsOnceAndScrubsPersistedToken(t *testing.T) {
+func TestCreateStagesBootstrapAndScrubsDesiredState(t *testing.T) {
 	client := newFakeClient()
 	manager, err := New(client, "controller-1", client.version)
 	if err != nil {
@@ -117,34 +143,59 @@ func TestCreateStartsOnceAndScrubsPersistedToken(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	raw, err := client.Get(context.Background(), 1)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if raw.State != "RUNNING" {
-		t.Fatalf("expected RUNNING after candidate bootstrap start, got %q", raw.State)
-	}
-	if tokenPresent(raw.InitEnv, bootstrap().Token) {
-		t.Fatal("bootstrap token remained in persisted init environment")
-	}
-	if strings.Contains(raw.Description, bootstrap().Token) {
-		t.Fatal("bootstrap token leaked into ownership metadata")
-	}
-	if raw.Autostart || raw.IDMapType != "DEFAULT" || raw.CapabilitiesPolicy != "DEFAULT" {
-		t.Fatalf("security profile drift: %#v", raw)
+	raw := client.items[1]
+	if raw.State != "RUNNING" || raw.Init != DefaultInit || len(raw.InitEnv) != 0 {
+		t.Fatalf("unexpected final state: %#v", raw)
 	}
 	if got.ProviderID != "container:1" || got.PoolID != "pool-1" {
-		t.Fatalf("unexpected provider instance: %#v", got)
+		t.Fatalf("bad instance: %#v", got)
+	}
+	root := "/mnt/" + raw.Dataset
+	if _, ok := client.files[root+BootstrapTokenPath]; ok {
+		t.Fatal("one-shot credential file remained after wrapper execution")
+	}
+	for _, marker := range []string{InitWrapperMarkerPath, BootstrapChildMarkerPath} {
+		if _, ok := client.files[root+marker]; !ok {
+			t.Fatalf("execution marker missing: %s", marker)
+		}
+	}
+	for _, script := range []string{BootstrapRunnerScriptPath, BootstrapInitScriptPath} {
+		file, ok := client.files[root+script]
+		if !ok {
+			t.Fatalf("staged script missing: %s", script)
+		}
+		if strings.Contains(string(file.content), bootstrap().Token) {
+			t.Fatalf("credential leaked into %s", script)
+		}
+		if file.mode != 0o755 {
+			t.Fatalf("bad mode at %s: %#o", script, file.mode)
+		}
 	}
 }
 
-func TestCreateFailsClosedWhenScrubCannotBeProven(t *testing.T) {
+func TestCreateCleansUpWhenScrubCannotBeProven(t *testing.T) {
 	client := newFakeClient()
-	client.preserveToken = true
+	client.preserveState = true
 	manager, _ := New(client, "controller-1", client.version)
 	_, err := manager.Create(context.Background(), bootstrap())
 	if !errors.Is(err, provider.ErrManagedDrift) {
-		t.Fatalf("expected managed-drift scrub failure, got %v", err)
+		t.Fatalf("expected drift, got %v", err)
+	}
+	if len(client.items) != 0 {
+		t.Fatalf("failed create residue: %#v", client.items)
+	}
+}
+
+func TestCreateRejectsUnsafeMountpointAndCleansUp(t *testing.T) {
+	client := newFakeClient()
+	client.badMountpoint = true
+	manager, _ := New(client, "controller-1", client.version)
+	_, err := manager.Create(context.Background(), bootstrap())
+	if !errors.Is(err, provider.ErrManagedDrift) {
+		t.Fatalf("expected drift, got %v", err)
+	}
+	if len(client.items) != 0 {
+		t.Fatalf("unsafe staging residue: %#v", client.items)
 	}
 }
 
@@ -154,37 +205,53 @@ func TestCreateFailsClosedOnExactVersionMismatch(t *testing.T) {
 	client.version = "TrueNAS-26.0.0-BETA.4"
 	_, err := manager.Create(context.Background(), bootstrap())
 	if !errors.Is(err, provider.ErrManagedDrift) {
-		t.Fatalf("expected exact-version mismatch, got %v", err)
+		t.Fatalf("expected version drift, got %v", err)
 	}
 }
 
-func TestForeignOwnershipIsNeverAdopted(t *testing.T) {
-	client := newFakeClient()
-	manager, _ := New(client, "controller-1", client.version)
-	in := bootstrap()
-	name := ownedName("controller-1", in.Name)
-	desc, _ := encodeOwnership(ownership{
-		Schema: "semper-supra.garm-container-owner/1", ManagedBy: "garm-provider-truenas",
-		ControllerID: "other-controller", PoolID: in.PoolID, RunnerName: in.Name, Profile: FlavorLinuxGeneral,
-	})
-	client.items[7] = Container{
-		ID: 7, Name: name, Description: desc, State: "STOPPED", Image: client.image,
-		IDMapType: "DEFAULT", CapabilitiesPolicy: "DEFAULT",
-	}
-	_, err := manager.Create(context.Background(), in)
-	if !errors.Is(err, provider.ErrForeign) {
-		t.Fatalf("expected foreign ownership rejection, got %v", err)
+func TestForeignOrInterruptedStateIsNeverAdopted(t *testing.T) {
+	for _, tc := range []struct {
+		name, controller string
+		interrupted      bool
+	}{
+		{"foreign", "other-controller", false},
+		{"interrupted", "controller-1", true},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			client := newFakeClient()
+			manager, _ := New(client, "controller-1", client.version)
+			in := bootstrap()
+			name := ownedName("controller-1", in.Name)
+			desc, _ := encodeOwnership(ownership{
+				Schema: "semper-supra.garm-container-owner/1", ManagedBy: "garm-provider-truenas",
+				ControllerID: tc.controller, PoolID: in.PoolID, RunnerName: in.Name, Profile: FlavorLinuxGeneral,
+			})
+			init := DefaultInit
+			env := map[string]string{}
+			state := "STOPPED"
+			if tc.interrupted {
+				plan := buildBootstrapPlan(in)
+				init = plan.Init
+				env = plan.InitEnv
+				state = "RUNNING"
+			}
+			client.items[7] = Container{
+				ID: 7, Name: name, Description: desc, State: state,
+				Dataset: "tank/.truenas_containers/containers/" + name, Image: client.image,
+				IDMapType: "DEFAULT", CapabilitiesPolicy: "DEFAULT", Init: init, InitEnv: env,
+			}
+			_, err := manager.Create(context.Background(), in)
+			if tc.interrupted && !errors.Is(err, provider.ErrManagedDrift) {
+				t.Fatalf("expected drift, got %v", err)
+			}
+			if !tc.interrupted && !errors.Is(err, provider.ErrForeign) {
+				t.Fatalf("expected foreign, got %v", err)
+			}
+		})
 	}
 }
 
-func TestStartIsUnsafeForOneJobRunner(t *testing.T) {
-	manager, _ := New(newFakeClient(), "controller-1", "TrueNAS-26.0.0-BETA.3")
-	if !errors.Is(manager.Start(context.Background(), "container:1"), provider.ErrUnsafeOperation) {
-		t.Fatal("external restart must remain forbidden")
-	}
-}
-
-func TestDeleteRequiresVerifiedStoppedStateAndAbsence(t *testing.T) {
+func TestDeleteRequiresStoppedStateAndUnknownStateFailsClosed(t *testing.T) {
 	client := newFakeClient()
 	manager, _ := New(client, "controller-1", client.version)
 	inst, err := manager.Create(context.Background(), bootstrap())
@@ -192,7 +259,7 @@ func TestDeleteRequiresVerifiedStoppedStateAndAbsence(t *testing.T) {
 		t.Fatal(err)
 	}
 	if err := manager.Delete(context.Background(), inst.ProviderID); !errors.Is(err, provider.ErrActive) {
-		t.Fatalf("active delete should be refused, got %v", err)
+		t.Fatalf("active delete should fail, got %v", err)
 	}
 	if err := manager.Stop(context.Background(), inst.ProviderID); err != nil {
 		t.Fatal(err)
@@ -200,21 +267,15 @@ func TestDeleteRequiresVerifiedStoppedStateAndAbsence(t *testing.T) {
 	if err := manager.Delete(context.Background(), inst.ProviderID); err != nil {
 		t.Fatal(err)
 	}
-	if len(client.items) != 0 {
-		t.Fatalf("container residue remains: %#v", client.items)
-	}
-}
 
-func TestUnknownRuntimeStateFailsClosed(t *testing.T) {
-	client := newFakeClient()
-	manager, _ := New(client, "controller-1", client.version)
 	desc, _ := encodeOwnership(ownership{
 		Schema: "semper-supra.garm-container-owner/1", ManagedBy: "garm-provider-truenas",
 		ControllerID: "controller-1", PoolID: "pool-1", RunnerName: "runner-1", Profile: FlavorLinuxGeneral,
 	})
 	client.items[2] = Container{
-		ID: 2, Name: "garm-owned", Description: desc, State: "PAUSED", Image: client.image,
-		IDMapType: "DEFAULT", CapabilitiesPolicy: "DEFAULT",
+		ID: 2, Name: "garm-owned", Description: desc, State: "PAUSED",
+		Dataset: "tank/.truenas_containers/containers/garm-owned", Image: client.image,
+		IDMapType: "DEFAULT", CapabilitiesPolicy: "DEFAULT", Init: DefaultInit, InitEnv: map[string]string{},
 	}
 	if _, err := manager.List(context.Background(), ""); !errors.Is(err, provider.ErrManagedDrift) {
 		t.Fatalf("unknown state should fail closed, got %v", err)
