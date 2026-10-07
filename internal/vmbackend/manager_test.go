@@ -21,7 +21,10 @@ type fakeClient struct {
 func newFakeClient() *fakeClient {
 	return &fakeClient{
 		version:  "TrueNAS-26.0.0-BETA.3",
-		template: Template{ID: 42, Name: TemplateFamily, Version: TemplateVersion},
+		template: Template{
+			ID: 42, Name: TemplateFamily, RuntimeName: TemplateRuntimeName, Version: TemplateVersion,
+			SourceURL: TemplateSourceURL, SourceSHA256: TemplateSourceSHA256,
+		},
 		items:    map[int]VM{},
 		seeds:    map[string]SeedSpec{},
 		nextID:   1,
@@ -165,6 +168,15 @@ func TestNoCloudSeedIsSelfContainedAndUsesUnprivilegedRunner(t *testing.T) {
 	if !strings.Contains(seed.UserData, "rm -f \"$env_file\"") {
 		t.Fatal("one-shot VM env file is not deleted before runner launch")
 	}
+	if seed.ConsumptionMarker != VMBootstrapConsumedMarkerPrefix+"garm-vm-test" {
+		t.Fatalf("unexpected bootstrap consumption marker %q", seed.ConsumptionMarker)
+	}
+	if !strings.Contains(seed.UserData, "printf '%s\\n' \"$consumption_marker\" >/dev/console") {
+		t.Fatal("VM launcher does not emit the post-consumption console marker")
+	}
+	if !strings.Contains(seed.UserData, seed.ConsumptionMarker) {
+		t.Fatal("cloud-init invocation does not bind the exact consumption marker")
+	}
 }
 
 func TestBootstrapRejectsLineBreakingNoCloudValues(t *testing.T) {
@@ -181,7 +193,43 @@ func TestBootstrapRejectsLineBreakingNoCloudValues(t *testing.T) {
 	}
 }
 
+func TestOwnedVMNamesMatchClassicMiddlewareConstraint(t *testing.T) {
+	name := ownedName("Controller-With-Dashes", "Runner With Spaces/And:Punctuation")
+	if name == "" || len(name) > 150 {
+		t.Fatalf("invalid VM name length: %q", name)
+	}
+	for _, r := range name {
+		if !((r >= 'a' && r <= 'z') || (r >= '0' && r <= '9') || r == '_') {
+			t.Fatalf("classic vm.* incompatible character %q in %q", r, name)
+		}
+	}
+	if strings.Contains(name, "-") {
+		t.Fatalf("classic vm.* name retained a hyphen: %q", name)
+	}
+}
+
+func TestTemplateProjectionIsExact(t *testing.T) {
+	client := newFakeClient()
+	manager, _ := New(client, "controller-1", client.version)
+	for _, mutate := range []func(*Template){
+		func(tpl *Template) { tpl.RuntimeName = "foreign_template" },
+		func(tpl *Template) { tpl.Version = "ubuntu-24.04-current-amd64" },
+		func(tpl *Template) { tpl.SourceSHA256 = strings.Repeat("0", 64) },
+	} {
+		in := bootstrap()
+		copyClient := newFakeClient()
+		mutate(&copyClient.template)
+		manager, _ = New(copyClient, "controller-1", copyClient.version)
+		if _, err := manager.Create(context.Background(), in); !errors.Is(err, provider.ErrManagedDrift) {
+			t.Fatalf("expected exact template projection drift to fail closed, got %v", err)
+		}
+	}
+}
+
 func TestTemplateIdentityIsExactAndNotFloating(t *testing.T) {
+	if TemplateRuntimeName != "garm_tpl_ubuntu_2404_20260926_amd64" {
+		t.Fatalf("unexpected template runtime name %q", TemplateRuntimeName)
+	}
 	if TemplateVersion != "ubuntu-24.04-release-20260926-amd64" {
 		t.Fatalf("unexpected template version %q", TemplateVersion)
 	}
