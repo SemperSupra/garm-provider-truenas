@@ -21,7 +21,7 @@ type fakeClient struct {
 func newFakeClient() *fakeClient {
 	return &fakeClient{
 		version:  "TrueNAS-26.0.0-BETA.3",
-		template: Template{ID: 42, Name: TemplateFamily, Version: "ubuntu-24.04.3"},
+		template: Template{ID: 42, Name: TemplateFamily, Version: TemplateVersion},
 		items:    map[int]VM{},
 		seeds:    map[string]SeedSpec{},
 		nextID:   1,
@@ -136,6 +136,60 @@ func bootstrap() provider.Bootstrap {
 		Name: "runner-1", OSType: "linux", Arch: "amd64", Flavor: FlavorLinuxGeneral,
 		PoolID: "pool-1", CallbackURL: "https://garm.example/callback",
 		MetadataURL: "https://garm.example/metadata", Token: "secret-bootstrap-token",
+	}
+}
+
+func TestNoCloudSeedIsSelfContainedAndUsesUnprivilegedRunner(t *testing.T) {
+	in := bootstrap()
+	seed := seedFor(in, "garm-vm-test")
+	for _, required := range []string{
+		"name: garm-runner",
+		"path: /usr/local/libexec/garm-runner-bootstrap",
+		"path: /usr/local/libexec/garm-bootstrap",
+		"path: /run/garm/bootstrap.env",
+		"/usr/sbin/runuser -u garm-runner",
+		"GARM_BOOTSTRAP_RUNNER_HOME=/home/garm-runner/actions-runner",
+		"downloading verified runner payload",
+		"vm runner started",
+	} {
+		if !strings.Contains(seed.UserData, required) {
+			t.Fatalf("self-contained VM seed missing %q", required)
+		}
+	}
+	if strings.Contains(seed.UserData, "container runner started") {
+		t.Fatal("VM seed retained container-specific ready message")
+	}
+	if got := strings.Count(seed.UserData, in.Token); got != 1 {
+		t.Fatalf("bootstrap token must appear exactly once in NoCloud user-data, got %d", got)
+	}
+	if !strings.Contains(seed.UserData, "rm -f \"$env_file\"") {
+		t.Fatal("one-shot VM env file is not deleted before runner launch")
+	}
+}
+
+func TestBootstrapRejectsLineBreakingNoCloudValues(t *testing.T) {
+	for _, mutate := range []func(*provider.Bootstrap){
+		func(in *provider.Bootstrap) { in.CallbackURL += "\nINJECTED=1" },
+		func(in *provider.Bootstrap) { in.MetadataURL += "\rINJECTED=1" },
+		func(in *provider.Bootstrap) { in.Token += "\nINJECTED=1" },
+	} {
+		in := bootstrap()
+		mutate(&in)
+		if err := validateBootstrap(in); !errors.Is(err, provider.ErrUnsupported) {
+			t.Fatalf("expected line-breaking bootstrap input to fail closed, got %v", err)
+		}
+	}
+}
+
+func TestTemplateIdentityIsExactAndNotFloating(t *testing.T) {
+	if TemplateVersion != "ubuntu-24.04-release-20260926-amd64" {
+		t.Fatalf("unexpected template version %q", TemplateVersion)
+	}
+	if TemplateSourceSHA256 != "6a81c37564db9b1ee84e141922625e1d7c5b389b99bb3c572e0243607d5bb4d2" {
+		t.Fatalf("unexpected template source digest %q", TemplateSourceSHA256)
+	}
+	if strings.Contains(TemplateSourceURL, "/current/") || !strings.Contains(TemplateSourceURL, "/release-20260926/") {
+		t.Fatalf("template source must be dated, not floating: %q", TemplateSourceURL)
 	}
 }
 
