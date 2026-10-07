@@ -106,6 +106,12 @@ func (f *fakeClient) Start(_ context.Context, id int) error {
 	}
 	item.State = "RUNNING"
 	f.items[id] = item
+	if item.Init == BootstrapInitCommand {
+		root := "/mnt/" + item.Dataset
+		delete(f.files, root+BootstrapTokenPath)
+		f.files[root+InitWrapperMarkerPath] = fakeFile{content: []byte("init-wrapper-v1\n"), mode: 0o644}
+		f.files[root+BootstrapChildMarkerPath] = fakeFile{content: []byte("bootstrap-child-v1\n"), mode: 0o644}
+	}
 	return nil
 }
 func (f *fakeClient) Stop(_ context.Context, id int, _ bool) error {
@@ -144,15 +150,25 @@ func TestCreateStagesBootstrapAndScrubsDesiredState(t *testing.T) {
 	if got.ProviderID != "container:1" || got.PoolID != "pool-1" {
 		t.Fatalf("bad instance: %#v", got)
 	}
-	if len(client.files) != 2 {
-		t.Fatalf("expected two staged files, got %d", len(client.files))
+	root := "/mnt/" + raw.Dataset
+	if _, ok := client.files[root+BootstrapTokenPath]; ok {
+		t.Fatal("one-shot credential file remained after wrapper execution")
 	}
-	for p, file := range client.files {
+	for _, marker := range []string{InitWrapperMarkerPath, BootstrapChildMarkerPath} {
+		if _, ok := client.files[root+marker]; !ok {
+			t.Fatalf("execution marker missing: %s", marker)
+		}
+	}
+	for _, script := range []string{BootstrapRunnerScriptPath, BootstrapInitScriptPath} {
+		file, ok := client.files[root+script]
+		if !ok {
+			t.Fatalf("staged script missing: %s", script)
+		}
 		if strings.Contains(string(file.content), bootstrap().Token) {
-			t.Fatalf("token leaked into %s", p)
+			t.Fatalf("credential leaked into %s", script)
 		}
 		if file.mode != 0o755 {
-			t.Fatalf("bad mode at %s: %#o", p, file.mode)
+			t.Fatalf("bad mode at %s: %#o", script, file.mode)
 		}
 	}
 }
