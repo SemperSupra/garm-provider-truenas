@@ -27,10 +27,17 @@ var (
 
 var Version = "v0.0.0-dev"
 
+const (
+	trueNASBackendApps      = "apps"
+	trueNASBackendContainer = "container"
+	trueNASBackendVM        = "vm"
+)
+
 type trueNASConfig struct {
 	Host                string `json:"host"`
 	Username            string `json:"username"`
 	APIKeyEnv           string `json:"api_key_env"`
+	Backend             string `json:"backend,omitempty"`
 	Port                int    `json:"port,omitempty"`
 	InsecureSkipVerify  bool   `json:"insecure_skip_verify,omitempty"`
 	CallbackHostGateway bool   `json:"callback_host_gateway,omitempty"`
@@ -406,10 +413,28 @@ func validateConfig(cfg config) error {
 		if cfg.TrueNAS.InsecureSkipVerify {
 			return badRequest(errors.New("insecure TLS verification is not permitted for the provider live transport"))
 		}
+		backend := normalizeTrueNASBackend(cfg.TrueNAS.Backend)
+		switch backend {
+		case trueNASBackendApps:
+			// Apps is the currently implemented and qualified backend. An omitted
+			// backend preserves the pre-matrix configuration contract.
+		case trueNASBackendContainer, trueNASBackendVM:
+			return badRequest(fmt.Errorf("truenas backend %q is recognized but not yet implemented/qualified", backend))
+		default:
+			return badRequest(fmt.Errorf("truenas backend %q is not supported", backend))
+		}
 	default:
 		return badRequest(fmt.Errorf("provider mode %q is not supported", cfg.Mode))
 	}
 	return nil
+}
+
+func normalizeTrueNASBackend(backend string) string {
+	backend = strings.ToLower(strings.TrimSpace(backend))
+	if backend == "" {
+		return trueNASBackendApps
+	}
+	return backend
 }
 
 func normalizeProviderError(err error) error {
@@ -481,6 +506,7 @@ const providerConfigSchema = `{
         "host": {"type": "string", "minLength": 1},
         "username": {"type": "string", "minLength": 1},
         "api_key_env": {"type": "string", "minLength": 1, "default": "TRUENAS_API_KEY"},
+        "backend": {"type": "string", "enum": ["apps", "container", "vm"], "default": "apps"},
         "port": {"type": "integer", "minimum": 0, "maximum": 65535},
         "insecure_skip_verify": {"const": false},
         "callback_host_gateway": {"type": "boolean", "default": false}
