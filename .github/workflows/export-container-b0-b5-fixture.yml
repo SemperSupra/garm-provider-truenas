@@ -1,4 +1,4 @@
-name: Export GARM TrueNAS Container B0-B5 fixture
+name: Export GARM TrueNAS Container pre-B4 fixture
 
 on:
   workflow_call:
@@ -15,9 +15,9 @@ on:
         type: string
   push:
     branches:
-      - prep/container-b0-b5-fixture-20261007
+      - prep/container-pre-b4-fixture-20261007
     paths:
-      - ".github/workflows/export-container-b0-b5-fixture.yml"
+      - ".github/workflows/export-container-pre-b4-fixture.yml"
       - "internal/containerbackend/**"
       - "internal/truenasstore/runtime_backend_catalog.go"
       - "internal/truenasstore/testdata/runtime-backend-target-matrix.json"
@@ -27,7 +27,7 @@ permissions:
   contents: read
 
 concurrency:
-  group: garm-provider-container-b0-b5-fixture-${{ github.ref }}
+  group: garm-provider-container-pre-b4-fixture-${{ github.ref }}
   cancel-in-progress: true
 
 jobs:
@@ -64,19 +64,19 @@ jobs:
           test -z "$(gofmt -l .)"
           go test ./internal/containerbackend ./internal/truenasstore ./internal/provider
 
-      - name: Export exact Container B0-B5 fixture
+      - name: Export exact Container pre-B4 fixture
         shell: bash
         env:
-          GARM_CONTAINER_FIXTURE_OUT: /tmp/container/garm-provider-container-b0-b5-fixture.json
+          GARM_CONTAINER_FIXTURE_OUT: /tmp/container/garm-provider-container-pre-b4-fixture.json
           GARM_CONTAINER_FIXTURE_SOURCE: ${{ steps.source.outputs.ref }}
         run: |
           set -euo pipefail
           mkdir -p /tmp/container
-          go test ./internal/containerbackend -run '^TestExportNestedContainerB0B5Fixture$' -count=1 -v
+          go test ./internal/containerbackend -run '^TestExportNestedContainerPreB4Fixture$' -count=1 -v
           test -s "$GARM_CONTAINER_FIXTURE_OUT"
 
           jq -e --arg source "${{ steps.source.outputs.ref }}" '
-            .schema == "semper-supra.garm-provider-truenas-container-b0-b5-fixture/1" and
+            .schema == "semper-supra.garm-provider-truenas-container-pre-b4-fixture/1" and
             .producer_source == $source and
             .authority == "SemperSupra/garm-provider-truenas-private#43" and
             .target.version == "26.0.0-BETA.3" and
@@ -97,14 +97,16 @@ jobs:
             .source_oracles.active_delete_refused == true and
             .source_oracles.final_absence_required == true and
             .source_oracles.per_runner_memory_isolation_claimed == false and
-            .source_oracles.runtime_admission_claimed == false
+            .source_oracles.runtime_admission_claimed == false and
+            .source_oracles.bootstrap_execution_claimed == false and
+            .source_oracles.github_jit_boundary_claimed == false
           ' "$GARM_CONTAINER_FIXTURE_OUT" >/dev/null
 
-      - name: Upload exact Container B0-B5 fixture
+      - name: Upload exact Container pre-B4 fixture
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
         with:
-          name: garm-provider-truenas-container-b0-b5-fixture
-          path: /tmp/container/garm-provider-container-b0-b5-fixture.json
+          name: garm-provider-truenas-container-pre-b4-fixture
+          path: /tmp/container/garm-provider-container-pre-b4-fixture.json
           if-no-files-found: error
           retention-days: 7
 
@@ -113,13 +115,13 @@ jobs:
         shell: bash
         run: |
           {
-            printf '%s\n' '### GARM TrueNAS Container B0-B5 fixture'
+            printf '%s\n' '### GARM TrueNAS Container pre-B4 fixture'
             printf '\n'
             printf -- '- provider source: `%s`\n' '${{ steps.source.outputs.ref }}'
-            if [[ -f /tmp/container/garm-provider-container-b0-b5-fixture.json ]]; then
-              printf -- '- target: `%s`\n' "$(jq -r '.target.system_version' /tmp/container/garm-provider-container-b0-b5-fixture.json)"
-              printf -- '- expected name: `%s`\n' "$(jq -r '.expected_name' /tmp/container/garm-provider-container-b0-b5-fixture.json)"
-              printf -- '- runtime admitted: `%s`\n' "$(jq -r '.source_oracles.runtime_admission_claimed' /tmp/container/garm-provider-container-b0-b5-fixture.json)"
+            if [[ -f /tmp/container/garm-provider-container-pre-b4-fixture.json ]]; then
+              printf -- '- target: `%s`\n' "$(jq -r '.target.system_version' /tmp/container/garm-provider-container-pre-b4-fixture.json)"
+              printf -- '- expected name: `%s`\n' "$(jq -r '.expected_name' /tmp/container/garm-provider-container-pre-b4-fixture.json)"
+              printf -- '- runtime admitted: `%s`\n' "$(jq -r '.source_oracles.runtime_admission_claimed' /tmp/container/garm-provider-container-pre-b4-fixture.json)"
             else
               printf '%s\n' '- fixture bundle: not produced'
             fi
