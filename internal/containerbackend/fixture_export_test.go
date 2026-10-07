@@ -21,6 +21,7 @@ type nestedContainerPreB4Fixture struct {
 	ExpectedOwnership map[string]string            `json:"expected_ownership"`
 	DesiredCreate     nestedContainerDesiredCreate `json:"desired_create"`
 	StagedFiles       []StagedFile                 `json:"staged_files"`
+	ExecutionMarkers  []string                     `json:"execution_markers"`
 	ExpectedPostStart nestedContainerPostStart     `json:"expected_post_start"`
 	Runner            nestedContainerRunner        `json:"runner"`
 	SourceOracles     map[string]bool              `json:"source_oracles"`
@@ -139,7 +140,8 @@ func TestExportNestedContainerPreB4Fixture(t *testing.T) {
 			Init:               plan.Init,
 			InitEnv:            plan.InitEnv,
 		},
-		StagedFiles: plan.Files,
+		StagedFiles:      plan.Files,
+		ExecutionMarkers: []string{InitWrapperMarkerPath, BootstrapChildMarkerPath},
 		ExpectedPostStart: nestedContainerPostStart{
 			Init:    plan.FinalInit,
 			InitEnv: plan.FinalEnv,
