@@ -58,7 +58,7 @@ func TestClassicVMV1SourceContractIsExplicitAndStillOpen(t *testing.T) {
 				t.Fatalf("%s vm-v1 source contract missing %s", version, method)
 			}
 		}
-		if RuntimeCellOperationallyAdmitted(runtimeBackendCatalogCell{
+		if RuntimeCellOperationallyAdmitted(RuntimeBackendCell{
 			Status: cell.Status,
 			Driver: cell.Driver,
 		}) {
