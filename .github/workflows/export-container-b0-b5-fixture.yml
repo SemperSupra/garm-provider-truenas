@@ -96,6 +96,7 @@ jobs:
             .expected_post_start.init == "/sbin/init" and
             (.expected_post_start.initenv | length) == 0 and
             (.staged_files | length) == 2 and
+            .execution_markers == ["/var/lib/garm-container/init-wrapper-executed", "/var/lib/garm-container/bootstrap-child-started"] and
             ([.staged_files[].contains_secret] | all(. == false)) and
             ([.staged_files[].sha256] | all(test("^[0-9a-f]{64}$"))) and
             .source_oracles.supported_rootfs_staging_defined == true and
