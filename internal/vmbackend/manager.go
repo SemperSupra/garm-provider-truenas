@@ -18,6 +18,62 @@ const (
 	TemplateFamily     = "ubuntu-24.04-amd64-template"
 )
 
+const vmBootstrapLauncher = `#!/bin/sh
+set -eu
+umask 077
+
+env_file="${1:?bootstrap env file is required}"
+[ -f "$env_file" ] || exit 40
+
+callback_url=''
+metadata_url=''
+instance_token=''
+runner_download_url=''
+runner_filename=''
+runner_sha256=''
+
+while IFS= read -r line || [ -n "$line" ]; do
+  case "$line" in
+    *=*) ;;
+    *) exit 41 ;;
+  esac
+  key=${line%%=*}
+  value=${line#*=}
+  case "$key" in
+    GARM_CALLBACK_URL) [ -z "$callback_url" ] || exit 42; callback_url=$value ;;
+    GARM_METADATA_URL) [ -z "$metadata_url" ] || exit 42; metadata_url=$value ;;
+    GARM_INSTANCE_TOKEN) [ -z "$instance_token" ] || exit 42; instance_token=$value ;;
+    GARM_RUNNER_DOWNLOAD_URL) [ -z "$runner_download_url" ] || exit 42; runner_download_url=$value ;;
+    GARM_RUNNER_FILENAME) [ -z "$runner_filename" ] || exit 42; runner_filename=$value ;;
+    GARM_RUNNER_SHA256) [ -z "$runner_sha256" ] || exit 42; runner_sha256=$value ;;
+    *) exit 43 ;;
+  esac
+done < "$env_file"
+rm -f "$env_file"
+
+: "${callback_url:?missing callback URL}"
+: "${metadata_url:?missing metadata URL}"
+: "${instance_token:?missing instance token}"
+: "${runner_download_url:?missing runner URL}"
+: "${runner_filename:?missing runner filename}"
+: "${runner_sha256:?missing runner SHA256}"
+
+install -d -m 0750 -o garm-runner -g garm-runner /home/garm-runner
+install -d -m 0700 -o garm-runner -g garm-runner /run/garm-jit
+
+exec /usr/sbin/runuser -u garm-runner -- /usr/bin/env \
+  GARM_CALLBACK_URL="$callback_url" \
+  GARM_METADATA_URL="$metadata_url" \
+  GARM_INSTANCE_TOKEN="$instance_token" \
+  GARM_RUNNER_DOWNLOAD_URL="$runner_download_url" \
+  GARM_RUNNER_FILENAME="$runner_filename" \
+  GARM_RUNNER_SHA256="$runner_sha256" \
+  GARM_BOOTSTRAP_RUNNER_HOME=/home/garm-runner/actions-runner \
+  GARM_BOOTSTRAP_JIT_DIR=/run/garm-jit \
+  GARM_BOOTSTRAP_RUNNER_ARCHIVE="/home/garm-runner/$runner_filename" \
+  /usr/local/libexec/garm-runner-bootstrap
+`
+
 type Template struct {
 	ID      int
 	Name    string
@@ -428,25 +484,23 @@ func validateBootstrap(in provider.Bootstrap) error {
 	if strings.TrimSpace(in.CallbackURL) == "" || strings.TrimSpace(in.MetadataURL) == "" || strings.TrimSpace(in.Token) == "" {
 		return provider.ErrUnsupported
 	}
+	for _, value := range []string{in.CallbackURL, in.MetadataURL, in.Token} {
+		if strings.ContainsAny(value, "\r\n\x00") {
+			return provider.ErrUnsupported
+		}
+	}
 	return nil
 }
 
 func seedFor(in provider.Bootstrap, hostname string) SeedSpec {
 	meta := fmt.Sprintf("instance-id: %s\nlocal-hostname: %s\n", hostname, hostname)
-	user := fmt.Sprintf(
-		"#cloud-config\n"+
-			"write_files:\n"+
-			"  - path: /run/garm/bootstrap.env\n"+
-			"    permissions: '0600'\n"+
-			"    content: |\n"+
-			"      GARM_CALLBACK_URL=%s\n"+
-			"      GARM_METADATA_URL=%s\n"+
-			"      GARM_INSTANCE_TOKEN=%s\n"+
-			"      GARM_RUNNER_DOWNLOAD_URL=%s\n"+
-			"      GARM_RUNNER_FILENAME=%s\n"+
-			"      GARM_RUNNER_SHA256=%s\n"+
-			"runcmd:\n"+
-			"  - [\"/usr/local/libexec/garm-bootstrap\", \"/run/garm/bootstrap.env\"]\n",
+	env := fmt.Sprintf(
+		"GARM_CALLBACK_URL=%s\n"+
+			"GARM_METADATA_URL=%s\n"+
+			"GARM_INSTANCE_TOKEN=%s\n"+
+			"GARM_RUNNER_DOWNLOAD_URL=%s\n"+
+			"GARM_RUNNER_FILENAME=%s\n"+
+			"GARM_RUNNER_SHA256=%s\n",
 		in.CallbackURL,
 		in.MetadataURL,
 		in.Token,
@@ -454,7 +508,45 @@ func seedFor(in provider.Bootstrap, hostname string) SeedSpec {
 		provider.RunnerToolFilename,
 		provider.RunnerToolSHA256,
 	)
-	return SeedSpec{MetaData: meta, UserData: user}
+
+	var user strings.Builder
+	user.WriteString("#cloud-config\n")
+	user.WriteString("users:\n")
+	user.WriteString("  - default\n")
+	user.WriteString("  - name: garm-runner\n")
+	user.WriteString("    system: true\n")
+	user.WriteString("    no_create_home: false\n")
+	user.WriteString("    homedir: /home/garm-runner\n")
+	user.WriteString("    shell: /usr/sbin/nologin\n")
+	user.WriteString("write_files:\n")
+	appendCloudConfigFile(&user, "/usr/local/libexec/garm-runner-bootstrap", "0755", "root:root", vmRunnerBootstrapScript())
+	appendCloudConfigFile(&user, "/usr/local/libexec/garm-bootstrap", "0755", "root:root", vmBootstrapLauncher)
+	appendCloudConfigFile(&user, "/run/garm/bootstrap.env", "0600", "root:root", env)
+	user.WriteString("runcmd:\n")
+	user.WriteString("  - [\"/usr/local/libexec/garm-bootstrap\", \"/run/garm/bootstrap.env\"]\n")
+	return SeedSpec{MetaData: meta, UserData: user.String()}
+}
+
+func vmRunnerBootstrapScript() string {
+	return strings.ReplaceAll(
+		truenasstore.ContainerBootstrapRuntimeCommand(),
+		"container runner started",
+		"vm runner started",
+	)
+}
+
+func appendCloudConfigFile(out *strings.Builder, path, permissions, owner, content string) {
+	fmt.Fprintf(out, "  - path: %s\n", path)
+	fmt.Fprintf(out, "    permissions: '%s'\n", permissions)
+	fmt.Fprintf(out, "    owner: %s\n", owner)
+	out.WriteString("    content: |\n")
+	prefix := "      "
+	trimmed := strings.TrimSuffix(content, "\n")
+	if trimmed != "" {
+		out.WriteString(prefix)
+		out.WriteString(strings.ReplaceAll(trimmed, "\n", "\n"+prefix))
+		out.WriteByte('\n')
+	}
 }
 
 func encodeOwnership(owner ownership) (string, error) {
