@@ -29,8 +29,8 @@ type Container struct {
 	Description        string
 	State              string
 	Image              Image
-	Autostart           bool
-	IDMapType           string
+	Autostart          bool
+	IDMapType          string
 	CapabilitiesPolicy string
 	InitEnv            map[string]string
 }
@@ -39,8 +39,8 @@ type CreateSpec struct {
 	Name               string
 	Description        string
 	Image              Image
-	Autostart           bool
-	IDMapType           string
+	Autostart          bool
+	IDMapType          string
 	CapabilitiesPolicy string
 	InitEnv            map[string]string
 }
@@ -140,8 +140,8 @@ func (m *Manager) Create(ctx context.Context, in provider.Bootstrap) (provider.I
 		Name:               name,
 		Description:        desc,
 		Image:              image,
-		Autostart:           false,
-		IDMapType:           "DEFAULT",
+		Autostart:          false,
+		IDMapType:          "DEFAULT",
 		CapabilitiesPolicy: "DEFAULT",
 		InitEnv:            initialEnv,
 	})
@@ -384,9 +384,9 @@ func validateBootstrap(in provider.Bootstrap) error {
 
 func bootstrapEnv(in provider.Bootstrap) map[string]string {
 	return map[string]string{
-		"GARM_CALLBACK_URL":  in.CallbackURL,
-		"GARM_METADATA_URL":  in.MetadataURL,
-		"GARM_INSTANCE_TOKEN": in.Token,
+		"GARM_CALLBACK_URL":        in.CallbackURL,
+		"GARM_METADATA_URL":        in.MetadataURL,
+		"GARM_INSTANCE_TOKEN":      in.Token,
 		"GARM_RUNNER_DOWNLOAD_URL": provider.RunnerToolURL,
 		"GARM_RUNNER_FILENAME":     provider.RunnerToolFilename,
 		"GARM_RUNNER_SHA256":       provider.RunnerToolSHA256,
