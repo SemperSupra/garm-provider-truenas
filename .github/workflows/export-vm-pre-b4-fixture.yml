@@ -1,0 +1,139 @@
+name: Export GARM TrueNAS VM pre-B4 fixture
+
+on:
+  workflow_call:
+    inputs:
+      provider_ref:
+        description: Exact SemperSupra/garm-provider-truenas commit to export
+        required: true
+        type: string
+  workflow_dispatch:
+    inputs:
+      provider_ref:
+        description: Exact provider commit; blank uses this workflow commit
+        required: false
+        type: string
+  push:
+    branches:
+      - prep/vm-pre-b4-fixture-20261007
+    paths:
+      - ".github/workflows/export-vm-pre-b4-fixture.yml"
+      - "internal/vmbackend/**"
+      - "internal/truenasstore/runtime_backend_catalog.go"
+      - "internal/truenasstore/testdata/runtime-backend-target-matrix.json"
+      - "internal/provider/provider.go"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: garm-provider-vm-pre-b4-fixture-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  export:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - name: Resolve exact provider source
+        id: source
+        shell: bash
+        env:
+          REQUESTED_REF: ${{ inputs.provider_ref }}
+        run: |
+          set -euo pipefail
+          ref="${REQUESTED_REF:-}"
+          if [[ -z "$ref" ]]; then
+            ref="$GITHUB_SHA"
+          fi
+          [[ "$ref" =~ ^[0-9a-f]{40}$ ]]
+          echo "ref=$ref" >> "$GITHUB_OUTPUT"
+
+      - name: Checkout exact provider source
+        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803
+        with:
+          repository: SemperSupra/garm-provider-truenas
+          ref: ${{ steps.source.outputs.ref }}
+          persist-credentials: false
+
+      - name: Verify provider source/static contract
+        shell: bash
+        run: |
+          set -euo pipefail
+          [[ "$(git rev-parse HEAD)" == "${{ steps.source.outputs.ref }}" ]]
+          test -z "$(gofmt -l .)"
+          go test ./internal/vmbackend ./internal/truenasstore ./internal/provider
+
+      - name: Export exact VM pre-B4 fixture
+        shell: bash
+        env:
+          GARM_VM_FIXTURE_OUT: /tmp/vm/garm-provider-vm-pre-b4-fixture.json
+          GARM_VM_FIXTURE_SOURCE: ${{ steps.source.outputs.ref }}
+        run: |
+          set -euo pipefail
+          mkdir -p /tmp/vm
+          go test ./internal/vmbackend -run '^TestExportNestedVMPreB4Fixture$' -count=1 -v
+          test -s "$GARM_VM_FIXTURE_OUT"
+
+          jq -e --arg source "${{ steps.source.outputs.ref }}" '
+            .schema == "semper-supra.garm-provider-truenas-vm-pre-b4-fixture/1" and
+            .producer_source == $source and
+            .authority == "SemperSupra/garm-provider-truenas-private#43" and
+            .target.version == "26.0.0-BETA.3" and
+            .target.system_version == "TrueNAS-26.0.0-BETA.3" and
+            .target.driver == "vm-v1" and
+            .target.control_surface == "vm.*" and
+            .target.status == "OPEN" and
+            .target.middleware_commit == "81e1265a86083888ba94a2bdfc02ff5c9c5ef6a3" and
+            (.target.required_methods | index("vm.clone")) != null and
+            (.target.required_methods | index("filesystem.put")) != null and
+            (.target.required_methods | index("vm.device.create")) != null and
+            (.target.required_methods | index("vm.device.delete")) != null and
+            (.target.required_methods | index("pool.dataset.create")) != null and
+            .profile == "truenas-vm-linux-general" and
+            .template_family == "ubuntu-24.04-amd64-template" and
+            .clone.vcpus == 4 and
+            .clone.memory_bytes == 8589934592 and
+            .clone.autostart == false and
+            .seed.run_local_token_placeholder == "__RUN_LOCAL_INSTANCE_TOKEN__" and
+            (.seed.user_data | contains("__RUN_LOCAL_INSTANCE_TOKEN__")) and
+            (.clone.description | contains("__RUN_LOCAL_INSTANCE_TOKEN__") | not) and
+            .seed.transport == "provider-owned child dataset + public filesystem.put input pipe" and
+            .seed.attach_device == "owned vm.device CDROM" and
+            .seed.retain_while_active == true and
+            .seed.delete_only_when_stopped == true and
+            .seed.consumption_signal_required == true and
+            .source_oracles."25_04_1_not_admitted" == true and
+            .source_oracles.active_seed_detach_forbidden == true and
+            .source_oracles.runtime_admission_claimed == false and
+            .source_oracles.guest_boot_claimed == false and
+            .source_oracles.bootstrap_consumption_claimed == false and
+            .source_oracles.github_jit_boundary_claimed == false and
+            .source_oracles.docker_or_container_actions_claimed == false and
+            .source_oracles.windows_or_gpu_claimed == false
+          ' "$GARM_VM_FIXTURE_OUT" >/dev/null
+
+      - name: Upload exact VM pre-B4 fixture
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: garm-provider-truenas-vm-pre-b4-fixture
+          path: /tmp/vm/garm-provider-vm-pre-b4-fixture.json
+          if-no-files-found: error
+          retention-days: 7
+
+      - name: Record export evidence
+        if: always()
+        shell: bash
+        run: |
+          {
+            printf '%s\n' '### GARM TrueNAS VM pre-B4 fixture'
+            printf '\n'
+            printf -- '- provider source: `%s`\n' '${{ steps.source.outputs.ref }}'
+            if [[ -f /tmp/vm/garm-provider-vm-pre-b4-fixture.json ]]; then
+              printf -- '- target: `%s`\n' "$(jq -r '.target.system_version' /tmp/vm/garm-provider-vm-pre-b4-fixture.json)"
+              printf -- '- expected name: `%s`\n' "$(jq -r '.expected_name' /tmp/vm/garm-provider-vm-pre-b4-fixture.json)"
+              printf -- '- runtime admitted: `%s`\n' "$(jq -r '.source_oracles.runtime_admission_claimed' /tmp/vm/garm-provider-vm-pre-b4-fixture.json)"
+            else
+              printf '%s\n' '- fixture bundle: not produced'
+            fi
+          } >> "$GITHUB_STEP_SUMMARY"
