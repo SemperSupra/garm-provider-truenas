@@ -11,20 +11,20 @@ import (
 )
 
 type nestedContainerPreB4Fixture struct {
-	Schema                   string                       `json:"schema"`
-	ProducerSource           string                       `json:"producer_source"`
-	Authority                string                       `json:"authority"`
-	Target                   nestedContainerTarget        `json:"target"`
-	Profile                  string                       `json:"profile"`
-	ImageFamily              string                       `json:"image_family"`
-	ExpectedName             string                       `json:"expected_name"`
-	ExpectedOwnership        map[string]string            `json:"expected_ownership"`
-	DesiredCreate            nestedContainerDesiredCreate `json:"desired_create"`
-	StagedFiles              []StagedFile                 `json:"staged_files"`
-	ExpectedPostStart        nestedContainerPostStart      `json:"expected_post_start"`
-	Runner                   nestedContainerRunner        `json:"runner"`
-	SourceOracles            map[string]bool              `json:"source_oracles"`
-	ClaimBoundary            string                       `json:"claim_boundary"`
+	Schema            string                       `json:"schema"`
+	ProducerSource    string                       `json:"producer_source"`
+	Authority         string                       `json:"authority"`
+	Target            nestedContainerTarget        `json:"target"`
+	Profile           string                       `json:"profile"`
+	ImageFamily       string                       `json:"image_family"`
+	ExpectedName      string                       `json:"expected_name"`
+	ExpectedOwnership map[string]string            `json:"expected_ownership"`
+	DesiredCreate     nestedContainerDesiredCreate `json:"desired_create"`
+	StagedFiles       []StagedFile                 `json:"staged_files"`
+	ExpectedPostStart nestedContainerPostStart      `json:"expected_post_start"`
+	Runner            nestedContainerRunner        `json:"runner"`
+	SourceOracles     map[string]bool              `json:"source_oracles"`
+	ClaimBoundary     string                       `json:"claim_boundary"`
 }
 
 type nestedContainerTarget struct {
@@ -150,19 +150,19 @@ func TestExportNestedContainerPreB4Fixture(t *testing.T) {
 			ToolSHA256:   provider.RunnerToolSHA256,
 		},
 		SourceOracles: map[string]bool{
-			"exact_version_required":                    true,
-			"foreign_ownership_rejected":                true,
-			"supported_rootfs_staging_defined":          true,
-			"temporary_init_scrub_required":             true,
-			"persisted_bootstrap_token_scrub_required":  true,
-			"runner_root_under_default_idmap_explicit":  true,
-			"external_restart_forbidden":                true,
-			"active_delete_refused":                     true,
-			"final_absence_required":                    true,
-			"per_runner_memory_isolation_claimed":       false,
-			"runtime_admission_claimed":                 false,
-			"bootstrap_execution_claimed":               false,
-			"github_jit_boundary_claimed":               false,
+			"exact_version_required":                   true,
+			"foreign_ownership_rejected":               true,
+			"supported_rootfs_staging_defined":         true,
+			"temporary_init_scrub_required":            true,
+			"persisted_bootstrap_token_scrub_required": true,
+			"runner_root_under_default_idmap_explicit": true,
+			"external_restart_forbidden":               true,
+			"active_delete_refused":                    true,
+			"final_absence_required":                   true,
+			"per_runner_memory_isolation_claimed":      false,
+			"runtime_admission_claimed":                false,
+			"bootstrap_execution_claimed":              false,
+			"github_jit_boundary_claimed":              false,
 		},
 		ClaimBoundary: "Provider-owned BETA.3 container-v1 source/static pre-B4 fixture. It binds exact target, ownership, secure defaults, supported pool.dataset.query + filesystem.put/stat rootfs staging, temporary init + one-time initenv, post-start desired-state scrub, official runner identity and retirement semantics. Staged files are non-secret. It does not claim that the BETA.3 Ubuntu image satisfies dependencies, executes the wrapper, reaches the callback/JIT boundary, or provides per-runner memory isolation. Those remain runtime gates.",
 	}
