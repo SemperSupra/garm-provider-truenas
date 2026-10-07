@@ -569,32 +569,32 @@ func decodeOwnership(raw string) (ownership, error) {
 }
 
 func ownedName(controllerID, requested string) string {
-	raw := sanitize(controllerID) + "-" + sanitize(requested)
+	raw := sanitizeVMNamePart(controllerID) + "_" + sanitizeVMNamePart(requested)
 	sum := sha256.Sum256([]byte(raw))
-	prefix := strings.Trim("garm-"+raw, "-")
+	prefix := strings.Trim("garm_"+raw, "_")
 	if len(prefix) > 48 {
-		prefix = strings.Trim(prefix[:48], "-")
+		prefix = strings.Trim(prefix[:48], "_")
 	}
-	return prefix + "-" + hex.EncodeToString(sum[:4])
+	return prefix + "_" + hex.EncodeToString(sum[:4])
 }
 
-func sanitize(in string) string {
+func sanitizeVMNamePart(in string) string {
 	in = strings.ToLower(in)
 	var b strings.Builder
-	lastDash := false
+	lastUnderscore := false
 	for _, r := range in {
 		ok := (r >= 'a' && r <= 'z') || (r >= '0' && r <= '9')
 		if ok {
 			b.WriteRune(r)
-			lastDash = false
+			lastUnderscore = false
 			continue
 		}
-		if !lastDash {
-			b.WriteByte('-')
-			lastDash = true
+		if !lastUnderscore {
+			b.WriteByte('_')
+			lastUnderscore = true
 		}
 	}
-	return strings.Trim(b.String(), "-")
+	return strings.Trim(b.String(), "_")
 }
 
 func providerIDFor(id int) string {
