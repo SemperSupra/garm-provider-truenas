@@ -16,8 +16,9 @@ on:
   push:
     branches:
       - prep/container-pre-b4-fixture-20261007
+      - fix/container-rootfs-projection-20261007
     paths:
-      - ".github/workflows/export-container-pre-b4-fixture.yml"
+      - ".github/workflows/export-container-b0-b5-fixture.yml"
       - "internal/containerbackend/**"
       - "internal/truenasstore/runtime_backend_catalog.go"
       - "internal/truenasstore/testdata/runtime-backend-target-matrix.json"
