@@ -45,7 +45,7 @@ type RuntimeBackendMatrix struct {
 	ArchitectureAuthority            string                         `json:"architecture_authority"`
 	RuntimeInheritanceAllowed        bool                           `json:"runtime_inheritance_allowed"`
 	RequiredTargetVersions           []string                       `json:"required_target_versions"`
-	Backends                         map[string]RuntimeBackendEntry  `json:"backends"`
+	Backends                         map[string]RuntimeBackendEntry `json:"backends"`
 	AllAdmittedRuntimeCellsQualified bool                           `json:"all_admitted_runtime_cells_qualified"`
 	ClaimBoundary                    string                         `json:"claim_boundary"`
 }
