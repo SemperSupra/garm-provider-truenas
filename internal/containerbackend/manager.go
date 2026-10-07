@@ -170,7 +170,8 @@ func (m *Manager) Create(ctx context.Context, in provider.Bootstrap) (provider.I
 		return provider.Instance{}, fmt.Errorf("new container unexpectedly active before bootstrap admission: %w", provider.ErrManagedDrift)
 	}
 
-	if err := m.stageBootstrapFiles(ctx, created, plan); err != nil {
+	mountpoint, err := m.stageBootstrapFiles(ctx, created, plan)
+	if err != nil {
 		_ = m.cleanupFailedCreate(ctx, created.ID)
 		return provider.Instance{}, err
 	}
@@ -201,46 +202,54 @@ func (m *Manager) Create(ctx context.Context, in provider.Bootstrap) (provider.I
 		_ = m.cleanupFailedCreate(ctx, created.ID)
 		return provider.Instance{}, fmt.Errorf("container did not remain running after bootstrap-state scrub: %w", provider.ErrManagedDrift)
 	}
+	tokenPath := path.Join(mountpoint, strings.TrimPrefix(BootstrapTokenPath, "/"))
+	if _, err := m.client.StatFile(ctx, tokenPath); !errors.Is(err, provider.ErrNotFound) {
+		_ = m.cleanupFailedCreate(ctx, created.ID)
+		if err == nil {
+			return provider.Instance{}, fmt.Errorf("bootstrap token file remains after init wrapper execution: %w", provider.ErrManagedDrift)
+		}
+		return provider.Instance{}, fmt.Errorf("verify bootstrap token file absence: %w", err)
+	}
 	return toInstance(observed, in.PoolID), nil
 }
 
-func (m *Manager) stageBootstrapFiles(ctx context.Context, item Container, plan BootstrapPlan) error {
+func (m *Manager) stageBootstrapFiles(ctx context.Context, item Container, plan BootstrapPlan) (string, error) {
 	if strings.TrimSpace(item.Dataset) == "" {
-		return fmt.Errorf("container dataset missing from create read-back: %w", provider.ErrManagedDrift)
+		return "", fmt.Errorf("container dataset missing from create read-back: %w", provider.ErrManagedDrift)
 	}
 	mountpoint, err := m.client.ResolveDatasetMountpoint(ctx, item.Dataset)
 	if err != nil {
-		return fmt.Errorf("resolve container root dataset mountpoint: %w", err)
+		return "", fmt.Errorf("resolve container root dataset mountpoint: %w", err)
 	}
 	mountpoint = path.Clean(strings.TrimSpace(mountpoint))
 	if !strings.HasPrefix(mountpoint, "/mnt/") || mountpoint == "/mnt" {
-		return fmt.Errorf("unsafe container root mountpoint %q: %w", mountpoint, provider.ErrManagedDrift)
+		return "", fmt.Errorf("unsafe container root mountpoint %q: %w", mountpoint, provider.ErrManagedDrift)
 	}
 
 	for _, file := range plan.Files {
 		relative := strings.TrimPrefix(path.Clean(file.Path), "/")
 		if relative == "." || relative == "" || relative == ".." || strings.HasPrefix(relative, "../") {
-			return fmt.Errorf("unsafe staged file path %q: %w", file.Path, provider.ErrUnsafeOperation)
+			return "", fmt.Errorf("unsafe staged file path %q: %w", file.Path, provider.ErrUnsafeOperation)
 		}
 		fullPath := path.Join(mountpoint, relative)
 		if !strings.HasPrefix(fullPath, mountpoint+"/") {
-			return fmt.Errorf("staged file escaped container root %q: %w", fullPath, provider.ErrUnsafeOperation)
+			return "", fmt.Errorf("staged file escaped container root %q: %w", fullPath, provider.ErrUnsafeOperation)
 		}
-		if file.ContainsSecret {
-			return fmt.Errorf("refusing to persist secret-bearing bootstrap file %q: %w", file.Path, provider.ErrUnsafeOperation)
+		if file.ContainsSecret && (file.Path != BootstrapTokenPath || file.Mode != 0o600) {
+			return "", fmt.Errorf("refusing unbounded secret-bearing bootstrap file %q: %w", file.Path, provider.ErrUnsafeOperation)
 		}
 		if err := m.client.PutFile(ctx, fullPath, []byte(file.Content), file.Mode); err != nil {
-			return fmt.Errorf("stage bootstrap file %q: %w", file.Path, err)
+			return "", fmt.Errorf("stage bootstrap file %q: %w", file.Path, err)
 		}
 		stat, err := m.client.StatFile(ctx, fullPath)
 		if err != nil {
-			return fmt.Errorf("read back bootstrap file %q: %w", file.Path, err)
+			return "", fmt.Errorf("read back bootstrap file %q: %w", file.Path, err)
 		}
 		if stat.Size != int64(len(file.Content)) || stat.Mode&0o777 != file.Mode {
-			return fmt.Errorf("bootstrap file read-back drift for %q: %w", file.Path, provider.ErrManagedDrift)
+			return "", fmt.Errorf("bootstrap file read-back drift for %q: %w", file.Path, provider.ErrManagedDrift)
 		}
 	}
-	return nil
+	return mountpoint, nil
 }
 
 func (m *Manager) cleanupFailedCreate(ctx context.Context, id int) error {
