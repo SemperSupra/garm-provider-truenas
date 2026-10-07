@@ -68,7 +68,6 @@ type Client interface {
 	List(context.Context) ([]Container, error)
 	Create(context.Context, CreateSpec) (Container, error)
 	Update(context.Context, int, UpdateSpec) (Container, error)
-	ResolveDatasetMountpoint(context.Context, string) (string, error)
 	PutFile(context.Context, string, []byte, int) error
 	StatFile(context.Context, string) (FileStat, error)
 	Start(context.Context, int) error
@@ -217,13 +216,9 @@ func (m *Manager) stageBootstrapFiles(ctx context.Context, item Container, plan 
 	if strings.TrimSpace(item.Dataset) == "" {
 		return "", fmt.Errorf("container dataset missing from create read-back: %w", provider.ErrManagedDrift)
 	}
-	mountpoint, err := m.client.ResolveDatasetMountpoint(ctx, item.Dataset)
+	mountpoint, err := containerRootfsMountpoint(item.Dataset, item.Name)
 	if err != nil {
-		return "", fmt.Errorf("resolve container root dataset mountpoint: %w", err)
-	}
-	mountpoint = path.Clean(strings.TrimSpace(mountpoint))
-	if !strings.HasPrefix(mountpoint, "/mnt/") || mountpoint == "/mnt" {
-		return "", fmt.Errorf("unsafe container root mountpoint %q: %w", mountpoint, provider.ErrManagedDrift)
+		return "", err
 	}
 
 	for _, file := range plan.Files {
@@ -250,6 +245,21 @@ func (m *Manager) stageBootstrapFiles(ctx context.Context, item Container, plan 
 		}
 	}
 	return mountpoint, nil
+}
+
+func containerRootfsMountpoint(dataset, name string) (string, error) {
+	dataset = strings.Trim(strings.TrimSpace(dataset), "/")
+	name = strings.TrimSpace(name)
+	parts := strings.Split(dataset, "/")
+	if len(parts) != 4 ||
+		parts[0] == "" ||
+		parts[1] != ".truenas_containers" ||
+		parts[2] != "containers" ||
+		parts[3] != name ||
+		name == "" {
+		return "", fmt.Errorf("unexpected container root dataset %q for %q: %w", dataset, name, provider.ErrManagedDrift)
+	}
+	return path.Join("/.truenas_containers", parts[0], "containers", name), nil
 }
 
 func (m *Manager) cleanupFailedCreate(ctx context.Context, id int) error {
