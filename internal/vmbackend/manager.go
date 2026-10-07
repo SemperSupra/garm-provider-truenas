@@ -14,12 +14,12 @@ import (
 )
 
 const (
-	FlavorLinuxGeneral   = "truenas-vm-linux-general"
-	TemplateFamily       = "ubuntu-24.04-amd64-template"
-	TemplateVersion      = "ubuntu-24.04-release-20260926-amd64"
-	TemplateRuntimeName  = "garm_tpl_ubuntu_2404_20260926_amd64"
-	TemplateSourceURL    = "https://cloud-images.ubuntu.com/releases/noble/release-20260926/ubuntu-24.04-server-cloudimg-amd64.img"
-	TemplateSourceSHA256 = "6a81c37564db9b1ee84e141922625e1d7c5b389b99bb3c572e0243607d5bb4d2"
+	FlavorLinuxGeneral              = "truenas-vm-linux-general"
+	TemplateFamily                  = "ubuntu-24.04-amd64-template"
+	TemplateVersion                 = "ubuntu-24.04-release-20260926-amd64"
+	TemplateRuntimeName             = "garm_tpl_ubuntu_2404_20260926_amd64"
+	TemplateSourceURL               = "https://cloud-images.ubuntu.com/releases/noble/release-20260926/ubuntu-24.04-server-cloudimg-amd64.img"
+	TemplateSourceSHA256            = "6a81c37564db9b1ee84e141922625e1d7c5b389b99bb3c572e0243607d5bb4d2"
 	VMBootstrapConsumedMarkerPrefix = "GARM_VM_BOOTSTRAP_CONSUMED_V1:"
 )
 
@@ -59,7 +59,7 @@ while IFS= read -r line || [ -n "$line" ]; do
   esac
 done < "$env_file"
 rm -f "$env_file"
-printf '%s\\n' "$consumption_marker" >/dev/console
+printf '%s\n' "$consumption_marker" >/dev/console
 
 : "${callback_url:?missing callback URL}"
 : "${metadata_url:?missing metadata URL}"
@@ -85,11 +85,11 @@ exec /usr/sbin/runuser -u garm-runner -- /usr/bin/env \
 `
 
 type Template struct {
-	ID          int
-	Name        string
-	RuntimeName string
-	Version     string
-	SourceURL   string
+	ID           int
+	Name         string
+	RuntimeName  string
+	Version      string
+	SourceURL    string
 	SourceSHA256 string
 }
 
