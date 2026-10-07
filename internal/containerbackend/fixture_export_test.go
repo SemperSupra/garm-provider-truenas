@@ -20,7 +20,8 @@ type nestedContainerPreB4Fixture struct {
 	ExpectedName             string                       `json:"expected_name"`
 	ExpectedOwnership        map[string]string            `json:"expected_ownership"`
 	DesiredCreate            nestedContainerDesiredCreate `json:"desired_create"`
-	ExpectedPostStartInitEnv map[string]string            `json:"expected_post_start_initenv"`
+	StagedFiles              []StagedFile                 `json:"staged_files"`
+	ExpectedPostStart        nestedContainerPostStart      `json:"expected_post_start"`
 	Runner                   nestedContainerRunner        `json:"runner"`
 	SourceOracles            map[string]bool              `json:"source_oracles"`
 	ClaimBoundary            string                       `json:"claim_boundary"`
@@ -42,7 +43,13 @@ type nestedContainerDesiredCreate struct {
 	Autostart          bool              `json:"autostart"`
 	IDMapType          string            `json:"idmap_type"`
 	CapabilitiesPolicy string            `json:"capabilities_policy"`
+	Init               string            `json:"init"`
 	InitEnv            map[string]string `json:"initenv"`
+}
+
+type nestedContainerPostStart struct {
+	Init    string            `json:"init"`
+	InitEnv map[string]string `json:"initenv"`
 }
 
 type nestedContainerRunner struct {
@@ -76,8 +83,8 @@ func TestExportNestedContainerPreB4Fixture(t *testing.T) {
 		Arch:        "amd64",
 		Flavor:      FlavorLinuxGeneral,
 		PoolID:      "nested-container-pool",
-		CallbackURL: "https://127.0.0.1:9443/callback",
-		MetadataURL: "https://127.0.0.1:9443/metadata",
+		CallbackURL: "http://10.47.214.1:9443/callback",
+		MetadataURL: "http://10.47.214.1:9443/metadata",
 		Token:       "__RUN_LOCAL_INSTANCE_TOKEN__",
 	}
 	if err := validateBootstrap(in); err != nil {
@@ -94,12 +101,13 @@ func TestExportNestedContainerPreB4Fixture(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	initial := bootstrapEnv(in)
-	scrubbed := cloneEnv(initial)
-	delete(scrubbed, "GARM_INSTANCE_TOKEN")
+	plan := buildBootstrapPlan(in)
+	if planContainsToken(plan, in.Token) {
+		t.Fatal("bootstrap token leaked into staged file content")
+	}
 
 	fixture := nestedContainerPreB4Fixture{
-		Schema:         "semper-supra.garm-provider-truenas-container-pre-b4-fixture/1",
+		Schema:         "semper-supra.garm-provider-truenas-container-pre-b4-fixture/2",
 		ProducerSource: producer,
 		Authority:      "SemperSupra/garm-provider-truenas-private#43",
 		Target: nestedContainerTarget{
@@ -128,28 +136,35 @@ func TestExportNestedContainerPreB4Fixture(t *testing.T) {
 			Autostart:          false,
 			IDMapType:          "DEFAULT",
 			CapabilitiesPolicy: "DEFAULT",
-			InitEnv:            initial,
+			Init:               plan.Init,
+			InitEnv:            plan.InitEnv,
 		},
-		ExpectedPostStartInitEnv: scrubbed,
+		StagedFiles: plan.Files,
+		ExpectedPostStart: nestedContainerPostStart{
+			Init:    plan.FinalInit,
+			InitEnv: plan.FinalEnv,
+		},
 		Runner: nestedContainerRunner{
 			ToolURL:      provider.RunnerToolURL,
 			ToolFilename: provider.RunnerToolFilename,
 			ToolSHA256:   provider.RunnerToolSHA256,
 		},
 		SourceOracles: map[string]bool{
-			"exact_version_required":                   true,
-			"foreign_ownership_rejected":               true,
-			"create_stopped_then_start_once":           true,
-			"persisted_bootstrap_token_scrub_required": true,
-			"external_restart_forbidden":               true,
-			"active_delete_refused":                    true,
-			"final_absence_required":                   true,
-			"per_runner_memory_isolation_claimed":      false,
-			"runtime_admission_claimed":                false,
-			"bootstrap_execution_claimed":              false,
-			"github_jit_boundary_claimed":              false,
+			"exact_version_required":                    true,
+			"foreign_ownership_rejected":                true,
+			"supported_rootfs_staging_defined":          true,
+			"temporary_init_scrub_required":             true,
+			"persisted_bootstrap_token_scrub_required":  true,
+			"runner_root_under_default_idmap_explicit":  true,
+			"external_restart_forbidden":                true,
+			"active_delete_refused":                     true,
+			"final_absence_required":                    true,
+			"per_runner_memory_isolation_claimed":       false,
+			"runtime_admission_claimed":                 false,
+			"bootstrap_execution_claimed":               false,
+			"github_jit_boundary_claimed":               false,
 		},
-		ClaimBoundary: "Provider-owned BETA.3 container-v1 B0-B3/B5 pre-B4 fixture only. It binds exact target, desired lifecycle, ownership, security defaults, persisted-token scrub intent and retirement semantics. It explicitly does not claim that stock Ubuntu consumes the bootstrap environment, executes the runner bootstrap, reaches the GitHub/JIT boundary, or provides per-runner memory isolation. B4 remains OPEN until a supported init/credential path is independently qualified.",
+		ClaimBoundary: "Provider-owned BETA.3 container-v1 source/static pre-B4 fixture. It binds exact target, ownership, secure defaults, supported pool.dataset.query + filesystem.put/stat rootfs staging, temporary init + one-time initenv, post-start desired-state scrub, official runner identity and retirement semantics. Staged files are non-secret. It does not claim that the BETA.3 Ubuntu image satisfies dependencies, executes the wrapper, reaches the callback/JIT boundary, or provides per-runner memory isolation. Those remain runtime gates.",
 	}
 
 	raw, err := json.MarshalIndent(fixture, "", "  ")
