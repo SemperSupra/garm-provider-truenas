@@ -1,0 +1,128 @@
+name: Export GARM TrueNAS Container pre-B4 fixture
+
+on:
+  workflow_call:
+    inputs:
+      provider_ref:
+        description: Exact SemperSupra/garm-provider-truenas commit to export
+        required: true
+        type: string
+  workflow_dispatch:
+    inputs:
+      provider_ref:
+        description: Exact provider commit; blank uses this workflow commit
+        required: false
+        type: string
+  push:
+    branches:
+      - prep/container-pre-b4-fixture-20261007
+    paths:
+      - ".github/workflows/export-container-pre-b4-fixture.yml"
+      - "internal/containerbackend/**"
+      - "internal/truenasstore/runtime_backend_catalog.go"
+      - "internal/truenasstore/testdata/runtime-backend-target-matrix.json"
+      - "internal/provider/provider.go"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: garm-provider-container-pre-b4-fixture-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  export:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - name: Resolve exact provider source
+        id: source
+        shell: bash
+        env:
+          REQUESTED_REF: ${{ inputs.provider_ref }}
+        run: |
+          set -euo pipefail
+          ref="${REQUESTED_REF:-}"
+          if [[ -z "$ref" ]]; then
+            ref="$GITHUB_SHA"
+          fi
+          [[ "$ref" =~ ^[0-9a-f]{40}$ ]]
+          echo "ref=$ref" >> "$GITHUB_OUTPUT"
+
+      - name: Checkout exact provider source
+        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803
+        with:
+          repository: SemperSupra/garm-provider-truenas
+          ref: ${{ steps.source.outputs.ref }}
+          persist-credentials: false
+
+      - name: Verify provider source/static contract
+        shell: bash
+        run: |
+          set -euo pipefail
+          [[ "$(git rev-parse HEAD)" == "${{ steps.source.outputs.ref }}" ]]
+          test -z "$(gofmt -l .)"
+          go test ./internal/containerbackend ./internal/truenasstore ./internal/provider
+
+      - name: Export exact Container pre-B4 fixture
+        shell: bash
+        env:
+          GARM_CONTAINER_FIXTURE_OUT: /tmp/container/garm-provider-container-pre-b4-fixture.json
+          GARM_CONTAINER_FIXTURE_SOURCE: ${{ steps.source.outputs.ref }}
+        run: |
+          set -euo pipefail
+          mkdir -p /tmp/container
+          go test ./internal/containerbackend -run '^TestExportNestedContainerPreB4Fixture$' -count=1 -v
+          test -s "$GARM_CONTAINER_FIXTURE_OUT"
+
+          jq -e --arg source "${{ steps.source.outputs.ref }}" '
+            .schema == "semper-supra.garm-provider-truenas-container-pre-b4-fixture/1" and
+            .producer_source == $source and
+            .authority == "SemperSupra/garm-provider-truenas-private#43" and
+            .target.version == "26.0.0-BETA.3" and
+            .target.system_version == "TrueNAS-26.0.0-BETA.3" and
+            .target.driver == "container-v1" and
+            .target.control_surface == "container.*" and
+            .target.status == "OPEN" and
+            .target.middleware_commit == "81e1265a86083888ba94a2bdfc02ff5c9c5ef6a3" and
+            .profile == "truenas-container-linux-general" and
+            .image_family == "ubuntu:noble:amd64:default" and
+            .desired_create.autostart == false and
+            .desired_create.idmap_type == "DEFAULT" and
+            .desired_create.capabilities_policy == "DEFAULT" and
+            .desired_create.initenv.GARM_INSTANCE_TOKEN == "__RUN_LOCAL_INSTANCE_TOKEN__" and
+            (.expected_post_start_initenv | has("GARM_INSTANCE_TOKEN") | not) and
+            .source_oracles.persisted_bootstrap_token_scrub_required == true and
+            .source_oracles.external_restart_forbidden == true and
+            .source_oracles.active_delete_refused == true and
+            .source_oracles.final_absence_required == true and
+            .source_oracles.per_runner_memory_isolation_claimed == false and
+            .source_oracles.runtime_admission_claimed == false and
+            .source_oracles.bootstrap_execution_claimed == false and
+            .source_oracles.github_jit_boundary_claimed == false
+          ' "$GARM_CONTAINER_FIXTURE_OUT" >/dev/null
+
+      - name: Upload exact Container pre-B4 fixture
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: garm-provider-truenas-container-pre-b4-fixture
+          path: /tmp/container/garm-provider-container-pre-b4-fixture.json
+          if-no-files-found: error
+          retention-days: 7
+
+      - name: Record export evidence
+        if: always()
+        shell: bash
+        run: |
+          {
+            printf '%s\n' '### GARM TrueNAS Container pre-B4 fixture'
+            printf '\n'
+            printf -- '- provider source: `%s`\n' '${{ steps.source.outputs.ref }}'
+            if [[ -f /tmp/container/garm-provider-container-pre-b4-fixture.json ]]; then
+              printf -- '- target: `%s`\n' "$(jq -r '.target.system_version' /tmp/container/garm-provider-container-pre-b4-fixture.json)"
+              printf -- '- expected name: `%s`\n' "$(jq -r '.expected_name' /tmp/container/garm-provider-container-pre-b4-fixture.json)"
+              printf -- '- runtime admitted: `%s`\n' "$(jq -r '.source_oracles.runtime_admission_claimed' /tmp/container/garm-provider-container-pre-b4-fixture.json)"
+            else
+              printf '%s\n' '- fixture bundle: not produced'
+            fi
+          } >> "$GITHUB_STEP_SUMMARY"
