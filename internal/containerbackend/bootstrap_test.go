@@ -58,6 +58,10 @@ func TestContainerInitWrapperScrubsEnvironmentBeforeSystemd(t *testing.T) {
 	if !strings.Contains(containerInitWrapper, "exec "+BootstrapRunnerScriptPath) {
 		t.Fatal("wrapper does not launch the runner bootstrap child")
 	}
+	if !strings.Contains(containerInitWrapper, "cat "+BootstrapTokenPath) ||
+		!strings.Contains(containerInitWrapper, "rm -f "+BootstrapTokenPath) {
+		t.Fatal("wrapper does not consume and delete the one-shot credential file")
+	}
 	for _, marker := range []string{InitWrapperMarkerPath, BootstrapChildMarkerPath} {
 		if !strings.Contains(containerInitWrapper, marker) {
 			t.Fatalf("wrapper does not emit execution marker %s", marker)
