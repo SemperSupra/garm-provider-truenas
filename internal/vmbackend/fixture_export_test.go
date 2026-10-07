@@ -11,24 +11,24 @@ import (
 )
 
 type nestedVMPreB4Fixture struct {
-	Schema            string            `json:"schema"`
-	ProducerSource    string            `json:"producer_source"`
-	Authority         string            `json:"authority"`
-	Target            nestedVMTarget    `json:"target"`
-	Profile           string            `json:"profile"`
-	TemplateFamily    string            `json:"template_family"`
-	TemplateVersion   string            `json:"template_version"`
-	TemplateRuntimeName string           `json:"template_runtime_name"`
-	TemplateSourceURL string            `json:"template_source_url"`
-	TemplateSourceSHA string            `json:"template_source_sha256"`
-	ExpectedName      string            `json:"expected_name"`
-	ExpectedOwnership map[string]string `json:"expected_ownership"`
-	Clone             nestedVMClone     `json:"clone"`
-	Seed              nestedVMSeed      `json:"seed"`
-	Retirement        []string          `json:"retirement"`
-	Runner            nestedVMRunner    `json:"runner"`
-	SourceOracles     map[string]bool   `json:"source_oracles"`
-	ClaimBoundary     string            `json:"claim_boundary"`
+	Schema              string            `json:"schema"`
+	ProducerSource      string            `json:"producer_source"`
+	Authority           string            `json:"authority"`
+	Target              nestedVMTarget    `json:"target"`
+	Profile             string            `json:"profile"`
+	TemplateFamily      string            `json:"template_family"`
+	TemplateVersion     string            `json:"template_version"`
+	TemplateRuntimeName string            `json:"template_runtime_name"`
+	TemplateSourceURL   string            `json:"template_source_url"`
+	TemplateSourceSHA   string            `json:"template_source_sha256"`
+	ExpectedName        string            `json:"expected_name"`
+	ExpectedOwnership   map[string]string `json:"expected_ownership"`
+	Clone               nestedVMClone     `json:"clone"`
+	Seed                nestedVMSeed      `json:"seed"`
+	Retirement          []string          `json:"retirement"`
+	Runner              nestedVMRunner    `json:"runner"`
+	SourceOracles       map[string]bool   `json:"source_oracles"`
+	ClaimBoundary       string            `json:"claim_boundary"`
 }
 
 type nestedVMTarget struct {
@@ -135,13 +135,13 @@ func TestExportNestedVMPreB4Fixture(t *testing.T) {
 			SourceBlobs:      cell.SourceBlobs,
 			Status:           cell.Status,
 		},
-		Profile:           FlavorLinuxGeneral,
-		TemplateFamily:    TemplateFamily,
-		TemplateVersion:   TemplateVersion,
+		Profile:             FlavorLinuxGeneral,
+		TemplateFamily:      TemplateFamily,
+		TemplateVersion:     TemplateVersion,
 		TemplateRuntimeName: TemplateRuntimeName,
-		TemplateSourceURL: TemplateSourceURL,
-		TemplateSourceSHA: TemplateSourceSHA256,
-		ExpectedName:      name,
+		TemplateSourceURL:   TemplateSourceURL,
+		TemplateSourceSHA:   TemplateSourceSHA256,
+		ExpectedName:        name,
 		ExpectedOwnership: map[string]string{
 			"schema":        "semper-supra.garm-vm-owner/1",
 			"managed_by":    "garm-provider-truenas",
@@ -195,7 +195,7 @@ func TestExportNestedVMPreB4Fixture(t *testing.T) {
 			"exact_version_required":                true,
 			"25_04_1_not_admitted":                  true,
 			"foreign_ownership_rejected":            true,
-			"classic_vm_name_safe":                   true,
+			"classic_vm_name_safe":                  true,
 			"fixed_cpu_memory_profile_required":     true,
 			"autostart_forbidden":                   true,
 			"zvol_template_clone_required":          true,
