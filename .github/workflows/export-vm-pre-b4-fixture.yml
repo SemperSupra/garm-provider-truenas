@@ -16,6 +16,7 @@ on:
   push:
     branches:
       - prep/vm-pre-b4-fixture-20261007
+      - fix/vm-runtime-identity-consumption-oracle-20261007
     paths:
       - ".github/workflows/export-vm-pre-b4-fixture.yml"
       - "internal/vmbackend/**"
