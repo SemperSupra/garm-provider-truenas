@@ -242,7 +242,10 @@
           "middleware_commit": "244b717370fe35fb9eefc3096acfbc25f12b57b6",
           "source_blobs": {
             "src/middlewared/middlewared/plugins/vm/vms.py": "993ed915c7058c8e8433d5d5592bb30f24cbfd1c",
-            "src/middlewared/middlewared/plugins/vm/vm_lifecycle.py": "85c5049c8c90572746ea1acf0a357a88afc88cb5"
+            "src/middlewared/middlewared/plugins/vm/vm_lifecycle.py": "85c5049c8c90572746ea1acf0a357a88afc88cb5",
+            "src/middlewared/middlewared/api/v25_04_2/vm.py": "201721f7e42e663d11f3e26ff6f59ef2bbce0c5f",
+            "src/middlewared/middlewared/api/v25_04_2/vm_device.py": "f85240d8a804b5d8347bc9a51d76c9c93c19a813",
+            "src/middlewared/middlewared/plugins/vm/clone.py": "03d0b4dbad81eada1747308ddd73417e710e29c9"
           },
           "required_methods": [
             "system.version",
@@ -252,8 +255,14 @@
             "vm.start",
             "vm.stop",
             "vm.poweroff",
-            "vm.status"
-          ]
+            "vm.status",
+            "vm.update",
+            "vm.clone",
+            "vm.device.query",
+            "vm.device.create",
+            "vm.device.delete"
+          ],
+          "note": "Classic vm.* driver. Initial Linux runner strategy is template-clone based: clone an exact Foundry-qualified VM whose boot disk is a ZVOL, apply owned metadata/profile, attach a per-instance bootstrap channel, start once, then retire with zvol cleanup. vm.clone source clones ZVOL-backed DISK devices but explicitly skips RAW disks. Bootstrap transport remains a separate source/runtime gate; do not admit the backend until it is secret-safe and independently read back."
         },
         "25.10.7": {
           "status": "OPEN",
@@ -262,7 +271,10 @@
           "middleware_commit": "8ede398839710e56893d88ce85088139d8fab18e",
           "source_blobs": {
             "src/middlewared/middlewared/plugins/vm/vms.py": "2532f53d54d845e983c76e8479027587dec81df7",
-            "src/middlewared/middlewared/plugins/vm/vm_lifecycle.py": "85c5049c8c90572746ea1acf0a357a88afc88cb5"
+            "src/middlewared/middlewared/plugins/vm/vm_lifecycle.py": "85c5049c8c90572746ea1acf0a357a88afc88cb5",
+            "src/middlewared/middlewared/api/v25_10_5/vm.py": "2dad2a7e851d354bc9d6e1d201781b2809e77894",
+            "src/middlewared/middlewared/api/v25_10_5/vm_device.py": "01250cc4187582f124501b958e512f4db49c561f",
+            "src/middlewared/middlewared/plugins/vm/clone.py": "03d0b4dbad81eada1747308ddd73417e710e29c9"
           },
           "required_methods": [
             "system.version",
@@ -272,8 +284,14 @@
             "vm.start",
             "vm.stop",
             "vm.poweroff",
-            "vm.status"
-          ]
+            "vm.status",
+            "vm.update",
+            "vm.clone",
+            "vm.device.query",
+            "vm.device.create",
+            "vm.device.delete"
+          ],
+          "note": "Classic vm.* driver. Initial Linux runner strategy is template-clone based: clone an exact Foundry-qualified VM whose boot disk is a ZVOL, apply owned metadata/profile, attach a per-instance bootstrap channel, start once, then retire with zvol cleanup. vm.clone source clones ZVOL-backed DISK devices but explicitly skips RAW disks. Bootstrap transport remains a separate source/runtime gate; do not admit the backend until it is secret-safe and independently read back."
         },
         "26.0.0-BETA.3": {
           "status": "OPEN",
@@ -282,7 +300,10 @@
           "middleware_commit": "81e1265a86083888ba94a2bdfc02ff5c9c5ef6a3",
           "source_blobs": {
             "src/middlewared/middlewared/plugins/vm/vms.py": "43ed4b532b40da02ad885039d954c99a93ea22ed",
-            "src/middlewared/middlewared/plugins/vm/vm_lifecycle.py": "b313e2eeb0baa0179ab9244fc244eee9b02e02e9"
+            "src/middlewared/middlewared/plugins/vm/vm_lifecycle.py": "b313e2eeb0baa0179ab9244fc244eee9b02e02e9",
+            "src/middlewared/middlewared/api/v26_0_0/vm.py": "0944382fedc0a8cbcfc55fb8a653a9e5758e88fd",
+            "src/middlewared/middlewared/api/v26_0_0/vm_device.py": "67603b6e2048da6235b802f970559b627857efc9",
+            "src/middlewared/middlewared/plugins/vm/clone.py": "67e38c9119ff69e6c542b60e89bf5239199baef9"
           },
           "required_methods": [
             "system.version",
@@ -292,8 +313,14 @@
             "vm.start",
             "vm.stop",
             "vm.poweroff",
-            "vm.status"
-          ]
+            "vm.status",
+            "vm.update",
+            "vm.clone",
+            "vm.device.query",
+            "vm.device.create",
+            "vm.device.delete"
+          ],
+          "note": "Classic vm.* driver. Initial Linux runner strategy is template-clone based: clone an exact Foundry-qualified VM whose boot disk is a ZVOL, apply owned metadata/profile, attach a per-instance bootstrap channel, start once, then retire with zvol cleanup. vm.clone source clones ZVOL-backed DISK devices but explicitly skips RAW disks. Bootstrap transport remains a separate source/runtime gate; do not admit the backend until it is secret-safe and independently read back."
         }
       }
     }
