@@ -205,27 +205,42 @@ Use existing providers as behavioral references:
 
 `garm-provider-lxd` is AGPL-3.0 and uses LXD-specific transport/data models. Reuse architecture and behavior as a reference; do not copy/fork it wholesale into the TrueNAS provider without an explicit licensing decision.
 
+## Exact-version driver strategy
+
+The provider backend identity is stable, but the supported TrueNAS middleware control surface is release-specific.
+
+| Backend | 25.04.1 | 25.04.2.6 | 25.10.7 | 26.0.0-BETA.3 |
+| --- | --- | --- | --- | --- |
+| Apps | `app.*` | `app.*` | `app.*` | `app.*` |
+| Containers | `virt.instance` / CONTAINER | `virt.instance` / CONTAINER | `virt.instance` / CONTAINER | `container.*` |
+| VM | transitional `virt.instance` / not initially admitted | `vm.*` | `vm.*` | `vm.*` |
+
+This is a driver mapping, not a support claim. Source/API presence never substitutes for an exact runtime receipt.
+
+The machine-readable authority is `internal/truenasstore/testdata/runtime-backend-target-matrix.json`. It is intentionally fail-closed: new targets/backends or OPEN cells cannot silently inherit support.
+
 ## Sequencing
 
-The project sequence remains deliberately narrow:
+The Apps backend has completed its capacity-one physical Stage 5 HIL and the exact-version nested G5 provider matrix. The next sequence is:
 
-1. Finish **Apps backend Stage 5 HIL** at capacity one.
-2. Harden Apps runtime attestation, lifecycle timing, and production packaging based on HIL evidence.
-3. Build a release-specific **Containers compatibility profile**, then prototype/qualify the Containers backend.
-4. Build a release-specific **VM compatibility profile**, then prototype/qualify the VM backend.
-5. Only after multiple backends are qualified, add cross-runtime policy/selection and portfolio scheduling.
+1. Preserve Apps as the reference baseline and keep its exact-version receipts regression-locked.
+2. Complete the GARM controller App generic Foundry F0-F5 matrix independently of provider backend work.
+3. Implement the Containers backend against first-class `container.*` on 26, then qualify the 25.x `virt.instance` container driver separately.
+4. Implement the VM backend against classic `vm.*` on 25.04.2.6+; keep 25.04.1 VM outside the initial admission envelope.
+5. Give each materially different backend driver one real capacity-one GitHub/JIT job HIL after its public/nested qualification.
+6. Add stronger profiles such as VM+Docker only after the ordinary VM profile passes.
+7. Use normal GARM provider definitions/pools/Scale Sets for cross-runtime placement; do not add provider-internal scheduling.
 
 GARM can already model these as separate provider definitions and pools/scale sets. We do not need to modify GARM core merely to support three TrueNAS runtimes.
 
 ## Current non-claims
 
-As of this decision:
-- Apps is implemented but real-NAS HIL remains pending.
-- Containers is architecture/future work only.
-- VMs is architecture/future work only.
-- No automatic runtime selection is implemented.
-- No nested-Docker, Windows, or GPU profile is qualified.
-- The current Stage 5 owner/live-mutation gate remains unchanged.
+- Apps is implemented and exact-version provider-compatible; current physical readiness is a separate operational state.
+- Containers is not yet implemented or runtime-qualified.
+- VMs are not yet implemented or runtime-qualified.
+- 25.04.1 VM is deliberately not admitted on the initial classic-VM implementation path.
+- No automatic backend fallback/selection is implemented in the provider.
+- No nested-Docker/container-action, Windows, or GPU profile is qualified.
 
 Tracking:
 - architecture authority: `SemperSupra/garm-provider-truenas-private#13`

@@ -1,0 +1,190 @@
+{
+  "schema": "semper-supra.garm-provider-truenas-runtime-backend-target-matrix/1",
+  "authority": "SemperSupra/garm-provider-truenas-private#43",
+  "architecture_authority": "SemperSupra/garm-provider-truenas-private#13",
+  "runtime_inheritance_allowed": false,
+  "required_target_versions": [
+    "25.04.1",
+    "25.04.2.6",
+    "25.10.7",
+    "26.0.0-BETA.3"
+  ],
+  "backends": {
+    "apps": {
+      "config_id": "apps",
+      "provider_name": "truenas-apps",
+      "profile": "truenas-linux-general",
+      "implementation_status": "IMPLEMENTED",
+      "target_status": {
+        "25.04.1": {
+          "status": "PASS",
+          "driver": "apps-v1",
+          "control_surface": "app.*",
+          "middleware_commit": "74ab5a2d373be4097dece257d00e1086376333ba",
+          "source_blobs": {
+            "src/middlewared/middlewared/plugins/apps/crud.py": "f3c4f79201c0d2340a8bc2cfbe4757448a6851ba",
+            "src/middlewared/middlewared/plugins/apps/ix_apps/query.py": "bfbd96d2bd5bdd9853f753d485300911588636c1"
+          },
+          "evidence": {
+            "run_id": 37101830281,
+            "artifact_id": 11266563812,
+            "classification": "SUPPORTED",
+            "oracle_satisfied": true,
+            "provider_source": "14535745dc3aa3c0b5466da7c704bca4d23dcec5"
+          }
+        },
+        "25.04.2.6": {
+          "status": "PASS",
+          "driver": "apps-v1",
+          "control_surface": "app.*",
+          "middleware_commit": "244b717370fe35fb9eefc3096acfbc25f12b57b6",
+          "source_blobs": {
+            "src/middlewared/middlewared/plugins/apps/crud.py": "f3c4f79201c0d2340a8bc2cfbe4757448a6851ba",
+            "src/middlewared/middlewared/plugins/apps/ix_apps/query.py": "bfbd96d2bd5bdd9853f753d485300911588636c1"
+          },
+          "evidence": {
+            "run_id": 37093024625,
+            "artifact_id": 11263802873,
+            "classification": "SUPPORTED",
+            "oracle_satisfied": true,
+            "provider_source": "14535745dc3aa3c0b5466da7c704bca4d23dcec5"
+          }
+        },
+        "25.10.7": {
+          "status": "PASS",
+          "driver": "apps-v1",
+          "control_surface": "app.*",
+          "middleware_commit": "8ede398839710e56893d88ce85088139d8fab18e",
+          "source_blobs": {
+            "src/middlewared/middlewared/plugins/apps/crud.py": "c7d01e03509bb8aa95d6650a09f7d6fd052671fc",
+            "src/middlewared/middlewared/plugins/apps/ix_apps/query.py": "13dab4bd9ed1eb6af152b4d1d5fab7b0866d4119"
+          },
+          "evidence": {
+            "run_id": 37083132234,
+            "artifact_id": 11259701357,
+            "classification": "SUPPORTED",
+            "oracle_satisfied": true,
+            "provider_source": "14535745dc3aa3c0b5466da7c704bca4d23dcec5"
+          }
+        },
+        "26.0.0-BETA.3": {
+          "status": "PASS",
+          "driver": "apps-v1",
+          "control_surface": "app.*",
+          "middleware_commit": "81e1265a86083888ba94a2bdfc02ff5c9c5ef6a3",
+          "source_blobs": {
+            "src/middlewared/middlewared/plugins/apps/crud.py": "8e456bbec3a5ab24249e1ac564b4c8067f7a156a",
+            "src/middlewared/middlewared/plugins/apps/ix_apps/query.py": "51d8f8bc791d7c0b08b39ac6db14f832ee04b265"
+          },
+          "evidence": {
+            "run_id": 37073805709,
+            "artifact_id": 11257015738,
+            "classification": "SUPPORTED",
+            "oracle_satisfied": true,
+            "provider_source": "14535745dc3aa3c0b5466da7c704bca4d23dcec5",
+            "scope": "stronger G4 capacity-two nested software evidence"
+          }
+        }
+      }
+    },
+    "container": {
+      "config_id": "container",
+      "provider_name": "truenas-containers",
+      "profile": "truenas-container-linux-general",
+      "implementation_status": "PLANNED",
+      "target_status": {
+        "25.04.1": {
+          "status": "OPEN",
+          "driver": "virt-instance-container-v1",
+          "control_surface": "virt.instance",
+          "middleware_commit": "74ab5a2d373be4097dece257d00e1086376333ba",
+          "source_blobs": {
+            "src/middlewared/middlewared/plugins/virt/instance.py": "87fc6bb365b3b09820331d90ed2c0138af41ce1b"
+          },
+          "note": "Experimental/version-bound TrueNAS Instances container path; runtime support requires independent qualification."
+        },
+        "25.04.2.6": {
+          "status": "OPEN",
+          "driver": "virt-instance-container-v1",
+          "control_surface": "virt.instance",
+          "middleware_commit": "244b717370fe35fb9eefc3096acfbc25f12b57b6",
+          "source_blobs": {
+            "src/middlewared/middlewared/plugins/virt/instance.py": "ac22db500d9d1c6932a4cc109716cd8a3bd46223"
+          },
+          "note": "Experimental/version-bound TrueNAS Instances container path; runtime support requires independent qualification."
+        },
+        "25.10.7": {
+          "status": "OPEN",
+          "driver": "virt-instance-container-v1",
+          "control_surface": "virt.instance",
+          "middleware_commit": "8ede398839710e56893d88ce85088139d8fab18e",
+          "source_blobs": {
+            "src/middlewared/middlewared/plugins/virt/instance.py": "8f3f21996b4d14385ba17405676704cb9b921bea"
+          },
+          "note": "Experimental/version-bound TrueNAS Instances container path; runtime support requires independent qualification."
+        },
+        "26.0.0-BETA.3": {
+          "status": "OPEN",
+          "driver": "container-v1",
+          "control_surface": "container.*",
+          "middleware_commit": "81e1265a86083888ba94a2bdfc02ff5c9c5ef6a3",
+          "source_blobs": {
+            "src/middlewared/middlewared/plugins/container/container.py": "54111667692fa7beea67893b50149ef605a8ce22",
+            "src/middlewared/middlewared/plugins/container/lifecycle.py": "1e29c7c3143d9adbd0cb8e03806a3d5f5ebe29e0"
+          },
+          "note": "First-class container API family; first implementation/real-system target."
+        }
+      }
+    },
+    "vm": {
+      "config_id": "vm",
+      "provider_name": "truenas-vms",
+      "profile": "truenas-vm-linux-general",
+      "implementation_status": "PLANNED",
+      "target_status": {
+        "25.04.1": {
+          "status": "NOT_ADMITTED",
+          "driver": "virt-instance-vm-v1",
+          "control_surface": "virt.instance",
+          "middleware_commit": "74ab5a2d373be4097dece257d00e1086376333ba",
+          "source_blobs": {
+            "src/middlewared/middlewared/plugins/virt/instance.py": "87fc6bb365b3b09820331d90ed2c0138af41ce1b"
+          },
+          "note": "Transitional Instances VM path exists in source but is deliberately outside the initial product support envelope."
+        },
+        "25.04.2.6": {
+          "status": "OPEN",
+          "driver": "vm-v1",
+          "control_surface": "vm.*",
+          "middleware_commit": "244b717370fe35fb9eefc3096acfbc25f12b57b6",
+          "source_blobs": {
+            "src/middlewared/middlewared/plugins/vm/vms.py": "993ed915c7058c8e8433d5d5592bb30f24cbfd1c",
+            "src/middlewared/middlewared/plugins/vm/lifecycle.py": "1d24abf29b1a24633854bac3f843f34e1718bac6"
+          }
+        },
+        "25.10.7": {
+          "status": "OPEN",
+          "driver": "vm-v1",
+          "control_surface": "vm.*",
+          "middleware_commit": "8ede398839710e56893d88ce85088139d8fab18e",
+          "source_blobs": {
+            "src/middlewared/middlewared/plugins/vm/vms.py": "2532f53d54d845e983c76e8479027587dec81df7",
+            "src/middlewared/middlewared/plugins/vm/lifecycle.py": "cedc596940ec0001bfa7102c01ae2f4d7c4b9a80"
+          }
+        },
+        "26.0.0-BETA.3": {
+          "status": "OPEN",
+          "driver": "vm-v1",
+          "control_surface": "vm.*",
+          "middleware_commit": "81e1265a86083888ba94a2bdfc02ff5c9c5ef6a3",
+          "source_blobs": {
+            "src/middlewared/middlewared/plugins/vm/vms.py": "43ed4b532b40da02ad885039d954c99a93ea22ed",
+            "src/middlewared/middlewared/plugins/vm/lifecycle.py": "54f961131eec5ff479b76ff1c15149d18a2ca579"
+          }
+        }
+      }
+    }
+  },
+  "all_admitted_runtime_cells_qualified": false,
+  "claim_boundary": "Source/API presence is not runtime qualification. OPEN cells remain non-claims; NOT_ADMITTED cells are intentionally outside the initial support envelope."
+}
