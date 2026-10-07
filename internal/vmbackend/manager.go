@@ -17,6 +17,7 @@ const (
 	FlavorLinuxGeneral   = "truenas-vm-linux-general"
 	TemplateFamily       = "ubuntu-24.04-amd64-template"
 	TemplateVersion      = "ubuntu-24.04-release-20260926-amd64"
+	TemplateRuntimeName  = "garm_tpl_ubuntu_2404_20260926_amd64"
 	TemplateSourceURL    = "https://cloud-images.ubuntu.com/releases/noble/release-20260926/ubuntu-24.04-server-cloudimg-amd64.img"
 	TemplateSourceSHA256 = "6a81c37564db9b1ee84e141922625e1d7c5b389b99bb3c572e0243607d5bb4d2"
 )
@@ -78,9 +79,12 @@ exec /usr/sbin/runuser -u garm-runner -- /usr/bin/env \
 `
 
 type Template struct {
-	ID      int
-	Name    string
-	Version string
+	ID          int
+	Name        string
+	RuntimeName string
+	Version     string
+	SourceURL   string
+	SourceSHA256 string
 }
 
 type VM struct {
@@ -185,8 +189,8 @@ func (m *Manager) Create(ctx context.Context, in provider.Bootstrap) (provider.I
 	if err != nil {
 		return provider.Instance{}, fmt.Errorf("resolve exact VM template: %w", err)
 	}
-	if template.Name != TemplateFamily || template.ID <= 0 || template.Version != TemplateVersion {
-		return provider.Instance{}, fmt.Errorf("template family/version did not resolve exactly: %w", provider.ErrManagedDrift)
+	if err := verifyTemplate(template); err != nil {
+		return provider.Instance{}, fmt.Errorf("template identity did not resolve exactly: %w", err)
 	}
 
 	desc, err := encodeOwnership(ownership{
@@ -463,8 +467,8 @@ func (m *Manager) verifyRuntime(item VM) error {
 	if item.Autostart || item.VCPUs != provider.GeneralCPU || item.MemoryBytes != provider.GeneralMemoryBytes {
 		return provider.ErrManagedDrift
 	}
-	if item.Template.Name != TemplateFamily || item.Template.ID <= 0 || item.Template.Version != TemplateVersion {
-		return provider.ErrManagedDrift
+	if err := verifyTemplate(item.Template); err != nil {
+		return err
 	}
 	switch strings.ToUpper(item.State) {
 	case "RUNNING", "STOPPED":
@@ -472,6 +476,18 @@ func (m *Manager) verifyRuntime(item VM) error {
 	default:
 		return provider.ErrManagedDrift
 	}
+}
+
+func verifyTemplate(template Template) error {
+	if template.ID <= 0 ||
+		template.Name != TemplateFamily ||
+		template.RuntimeName != TemplateRuntimeName ||
+		template.Version != TemplateVersion ||
+		template.SourceURL != TemplateSourceURL ||
+		template.SourceSHA256 != TemplateSourceSHA256 {
+		return provider.ErrManagedDrift
+	}
+	return nil
 }
 
 func validateBootstrap(in provider.Bootstrap) error {
