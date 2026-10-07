@@ -44,8 +44,13 @@ func TestBootstrapPlanStagesOnlyNonSecretFiles(t *testing.T) {
 }
 
 func TestContainerInitWrapperScrubsEnvironmentBeforeSystemd(t *testing.T) {
-	if !strings.Contains(containerInitWrapper, BootstrapRunnerScriptPath+" &") {
+	if !strings.Contains(containerInitWrapper, "exec "+BootstrapRunnerScriptPath) {
 		t.Fatal("wrapper does not launch the runner bootstrap child")
+	}
+	for _, marker := range []string{InitWrapperMarkerPath, BootstrapChildMarkerPath} {
+		if !strings.Contains(containerInitWrapper, marker) {
+			t.Fatalf("wrapper does not emit execution marker %s", marker)
+		}
 	}
 	for _, name := range []string{
 		"GARM_CALLBACK_URL",
