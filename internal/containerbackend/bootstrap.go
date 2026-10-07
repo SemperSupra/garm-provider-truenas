@@ -10,17 +10,17 @@ import (
 )
 
 const (
-	DefaultInit              = "/sbin/init"
-	BootstrapInitCommand     = "/bin/sh /usr/local/bin/garm-container-init"
+	DefaultInit               = "/sbin/init"
+	BootstrapInitCommand      = "/bin/sh /usr/local/bin/garm-container-init"
 	BootstrapRunnerScriptPath = "/usr/local/bin/garm-runner-bootstrap"
 	BootstrapInitScriptPath   = "/usr/local/bin/garm-container-init"
 )
 
 type StagedFile struct {
-	Path          string
-	Mode          int
-	Content       string
-	SHA256        string
+	Path           string
+	Mode           int
+	Content        string
+	SHA256         string
 	ContainsSecret bool
 }
 
@@ -51,8 +51,8 @@ func buildBootstrapPlan(in provider.Bootstrap) BootstrapPlan {
 	initial["RUNNER_ALLOW_RUNASROOT"] = "1"
 
 	return BootstrapPlan{
-		Init:      BootstrapInitCommand,
-		InitEnv:   initial,
+		Init:    BootstrapInitCommand,
+		InitEnv: initial,
 		Files: []StagedFile{
 			stagedFile(BootstrapRunnerScriptPath, 0o755, truenasstore.ContainerBootstrapRuntimeCommand()),
 			stagedFile(BootstrapInitScriptPath, 0o755, containerInitWrapper),
