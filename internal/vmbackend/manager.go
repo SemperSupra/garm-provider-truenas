@@ -20,6 +20,7 @@ const (
 	TemplateRuntimeName  = "garm_tpl_ubuntu_2404_20260926_amd64"
 	TemplateSourceURL    = "https://cloud-images.ubuntu.com/releases/noble/release-20260926/ubuntu-24.04-server-cloudimg-amd64.img"
 	TemplateSourceSHA256 = "6a81c37564db9b1ee84e141922625e1d7c5b389b99bb3c572e0243607d5bb4d2"
+	VMBootstrapConsumedMarkerPrefix = "GARM_VM_BOOTSTRAP_CONSUMED_V1:"
 )
 
 const vmBootstrapLauncher = `#!/bin/sh
@@ -27,7 +28,11 @@ set -eu
 umask 077
 
 env_file="${1:?bootstrap env file is required}"
+consumption_marker="${2:?bootstrap consumption marker is required}"
 [ -f "$env_file" ] || exit 40
+case "$consumption_marker" in
+  *[!A-Za-z0-9_:]*) exit 44 ;;
+esac
 
 callback_url=''
 metadata_url=''
@@ -54,6 +59,7 @@ while IFS= read -r line || [ -n "$line" ]; do
   esac
 done < "$env_file"
 rm -f "$env_file"
+printf '%s\\n' "$consumption_marker" >/dev/console
 
 : "${callback_url:?missing callback URL}"
 : "${metadata_url:?missing metadata URL}"
@@ -108,8 +114,9 @@ type CloneSpec struct {
 }
 
 type SeedSpec struct {
-	MetaData string
-	UserData string
+	MetaData          string
+	UserData          string
+	ConsumptionMarker string
 }
 
 type Client interface {
@@ -513,6 +520,7 @@ func validateBootstrap(in provider.Bootstrap) error {
 
 func seedFor(in provider.Bootstrap, hostname string) SeedSpec {
 	meta := fmt.Sprintf("instance-id: %s\nlocal-hostname: %s\n", hostname, hostname)
+	marker := VMBootstrapConsumedMarkerPrefix + hostname
 	env := fmt.Sprintf(
 		"GARM_CALLBACK_URL=%s\n"+
 			"GARM_METADATA_URL=%s\n"+
@@ -542,8 +550,8 @@ func seedFor(in provider.Bootstrap, hostname string) SeedSpec {
 	appendCloudConfigFile(&user, "/usr/local/libexec/garm-bootstrap", "0755", "root:root", vmBootstrapLauncher)
 	appendCloudConfigFile(&user, "/run/garm/bootstrap.env", "0600", "root:root", env)
 	user.WriteString("runcmd:\n")
-	user.WriteString("  - [\"/usr/local/libexec/garm-bootstrap\", \"/run/garm/bootstrap.env\"]\n")
-	return SeedSpec{MetaData: meta, UserData: user.String()}
+	fmt.Fprintf(&user, "  - [\"/usr/local/libexec/garm-bootstrap\", \"/run/garm/bootstrap.env\", \"%s\"]\n", marker)
+	return SeedSpec{MetaData: meta, UserData: user.String(), ConsumptionMarker: marker}
 }
 
 func vmRunnerBootstrapScript() string {
