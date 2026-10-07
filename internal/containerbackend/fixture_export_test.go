@@ -10,20 +10,20 @@ import (
 	"github.com/SemperSupra/garm-provider-truenas/internal/truenasstore"
 )
 
-type nestedContainerFixture struct {
-	Schema                  string                       `json:"schema"`
-	ProducerSource          string                       `json:"producer_source"`
-	Authority               string                       `json:"authority"`
-	Target                  nestedContainerTarget        `json:"target"`
-	Profile                 string                       `json:"profile"`
-	ImageFamily             string                       `json:"image_family"`
-	ExpectedName            string                       `json:"expected_name"`
-	ExpectedOwnership       map[string]string            `json:"expected_ownership"`
-	DesiredCreate           nestedContainerDesiredCreate `json:"desired_create"`
+type nestedContainerPreB4Fixture struct {
+	Schema                   string                       `json:"schema"`
+	ProducerSource           string                       `json:"producer_source"`
+	Authority                string                       `json:"authority"`
+	Target                   nestedContainerTarget        `json:"target"`
+	Profile                  string                       `json:"profile"`
+	ImageFamily              string                       `json:"image_family"`
+	ExpectedName             string                       `json:"expected_name"`
+	ExpectedOwnership        map[string]string            `json:"expected_ownership"`
+	DesiredCreate            nestedContainerDesiredCreate `json:"desired_create"`
 	ExpectedPostStartInitEnv map[string]string            `json:"expected_post_start_initenv"`
-	Runner                  nestedContainerRunner        `json:"runner"`
-	SourceOracles           map[string]bool              `json:"source_oracles"`
-	ClaimBoundary           string                       `json:"claim_boundary"`
+	Runner                   nestedContainerRunner        `json:"runner"`
+	SourceOracles            map[string]bool              `json:"source_oracles"`
+	ClaimBoundary            string                       `json:"claim_boundary"`
 }
 
 type nestedContainerTarget struct {
@@ -51,7 +51,7 @@ type nestedContainerRunner struct {
 	ToolSHA256   string `json:"tool_sha256"`
 }
 
-func TestExportNestedContainerB0B5Fixture(t *testing.T) {
+func TestExportNestedContainerPreB4Fixture(t *testing.T) {
 	out := strings.TrimSpace(os.Getenv("GARM_CONTAINER_FIXTURE_OUT"))
 	if out == "" {
 		t.Skip("GARM_CONTAINER_FIXTURE_OUT is not set")
@@ -98,8 +98,8 @@ func TestExportNestedContainerB0B5Fixture(t *testing.T) {
 	scrubbed := cloneEnv(initial)
 	delete(scrubbed, "GARM_INSTANCE_TOKEN")
 
-	fixture := nestedContainerFixture{
-		Schema:         "semper-supra.garm-provider-truenas-container-b0-b5-fixture/1",
+	fixture := nestedContainerPreB4Fixture{
+		Schema:         "semper-supra.garm-provider-truenas-container-pre-b4-fixture/1",
 		ProducerSource: producer,
 		Authority:      "SemperSupra/garm-provider-truenas-private#43",
 		Target: nestedContainerTarget{
@@ -112,8 +112,8 @@ func TestExportNestedContainerB0B5Fixture(t *testing.T) {
 			SourceBlobs:      cell.SourceBlobs,
 			Status:           cell.Status,
 		},
-		Profile:     FlavorLinuxGeneral,
-		ImageFamily: ImageFamily,
+		Profile:      FlavorLinuxGeneral,
+		ImageFamily:  ImageFamily,
 		ExpectedName: ownedName("nested-container-controller", in.Name),
 		ExpectedOwnership: map[string]string{
 			"schema":        "semper-supra.garm-container-owner/1",
@@ -145,9 +145,11 @@ func TestExportNestedContainerB0B5Fixture(t *testing.T) {
 			"active_delete_refused":                  true,
 			"final_absence_required":                 true,
 			"per_runner_memory_isolation_claimed":    false,
-			"runtime_admission_claimed":              false,
+			"runtime_admission_claimed":                false,
+			"bootstrap_execution_claimed":              false,
+			"github_jit_boundary_claimed":              false,
 		},
-		ClaimBoundary: "Provider-owned BETA.3 container-v1 desired-state fixture only. Runtime support remains OPEN until an independent TrueNAS receipt proves create/readback, bootstrap lowering, token scrub, lifecycle/reconciliation, runner/JIT boundary, and zero residue.",
+		ClaimBoundary: "Provider-owned BETA.3 container-v1 B0-B3/B5 pre-B4 fixture only. It binds exact target, desired lifecycle, ownership, security defaults, persisted-token scrub intent and retirement semantics. It explicitly does not claim that stock Ubuntu consumes the bootstrap environment, executes the runner bootstrap, reaches the GitHub/JIT boundary, or provides per-runner memory isolation. B4 remains OPEN until a supported init/credential path is independently qualified.",
 	}
 
 	raw, err := json.MarshalIndent(fixture, "", "  ")
