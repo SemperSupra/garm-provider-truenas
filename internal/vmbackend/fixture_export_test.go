@@ -18,6 +18,7 @@ type nestedVMPreB4Fixture struct {
 	Profile           string            `json:"profile"`
 	TemplateFamily    string            `json:"template_family"`
 	TemplateVersion   string            `json:"template_version"`
+	TemplateRuntimeName string           `json:"template_runtime_name"`
 	TemplateSourceURL string            `json:"template_source_url"`
 	TemplateSourceSHA string            `json:"template_source_sha256"`
 	ExpectedName      string            `json:"expected_name"`
@@ -57,6 +58,7 @@ type nestedVMSeed struct {
 	RetainWhileActive         bool     `json:"retain_while_active"`
 	DeleteOnlyWhenStopped     bool     `json:"delete_only_when_stopped"`
 	ConsumptionSignalRequired bool     `json:"consumption_signal_required"`
+	ConsumptionMarker         string   `json:"consumption_marker"`
 	RequiredStages            []string `json:"required_stages"`
 }
 
@@ -136,6 +138,7 @@ func TestExportNestedVMPreB4Fixture(t *testing.T) {
 		Profile:           FlavorLinuxGeneral,
 		TemplateFamily:    TemplateFamily,
 		TemplateVersion:   TemplateVersion,
+		TemplateRuntimeName: TemplateRuntimeName,
 		TemplateSourceURL: TemplateSourceURL,
 		TemplateSourceSHA: TemplateSourceSHA256,
 		ExpectedName:      name,
@@ -162,6 +165,7 @@ func TestExportNestedVMPreB4Fixture(t *testing.T) {
 			RetainWhileActive:         true,
 			DeleteOnlyWhenStopped:     true,
 			ConsumptionSignalRequired: true,
+			ConsumptionMarker:         seed.ConsumptionMarker,
 			RequiredStages: []string{
 				"create provider-owned seed child dataset",
 				"generate deterministic NoCloud ISO from exact fixture",
@@ -191,6 +195,7 @@ func TestExportNestedVMPreB4Fixture(t *testing.T) {
 			"exact_version_required":                true,
 			"25_04_1_not_admitted":                  true,
 			"foreign_ownership_rejected":            true,
+			"classic_vm_name_safe":                   true,
 			"fixed_cpu_memory_profile_required":     true,
 			"autostart_forbidden":                   true,
 			"zvol_template_clone_required":          true,
@@ -202,6 +207,7 @@ func TestExportNestedVMPreB4Fixture(t *testing.T) {
 			"owned_cdrom_required":                  true,
 			"active_seed_detach_forbidden":          true,
 			"bootstrap_consumption_signal_required": true,
+			"console_consumption_marker_required":   true,
 			"seed_device_absence_required":          true,
 			"seed_dataset_absence_required":         true,
 			"final_vm_absence_required":             true,
@@ -212,7 +218,7 @@ func TestExportNestedVMPreB4Fixture(t *testing.T) {
 			"docker_or_container_actions_claimed":   false,
 			"windows_or_gpu_claimed":                false,
 		},
-		ClaimBoundary: "Source/static BETA.3 classic vm-v1 pre-B4 fixture. It binds exact target/source identity, provider ownership, fixed 4-vCPU/8-GiB clone profile, a dated SHA256-pinned stock Ubuntu 24.04 cloud-image template, self-contained NoCloud bootstrap scripts with only a literal run-local token placeholder, supported filesystem.put + vm.device + pool.dataset control surfaces, stopped-state seed retirement, and zero-residue requirements. It does not prove template availability, VM guest boot, bootstrap consumption, callback/JIT, GitHub registration, Docker/container-actions, Windows/GPU, physical TrueNAS, or operational runtime admission.",
+		ClaimBoundary: "Source/static BETA.3 classic vm-v1 pre-B4 fixture. It binds exact target/source identity, classic-vm-safe runtime naming, provider ownership, fixed 4-vCPU/8-GiB clone profile, a dated SHA256-pinned stock Ubuntu 24.04 cloud-image template with exact TrueNAS runtime name, self-contained NoCloud bootstrap scripts with only a literal run-local token placeholder and a deterministic post-secret-deletion console marker, supported filesystem.put + vm.device + pool.dataset control surfaces, stopped-state seed retirement, and zero-residue requirements. It does not prove template availability, VM guest boot, bootstrap consumption, callback/JIT, GitHub registration, Docker/container-actions, Windows/GPU, physical TrueNAS, or operational runtime admission.",
 	}
 
 	raw, err := json.MarshalIndent(fixture, "", "  ")
