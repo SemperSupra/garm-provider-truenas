@@ -139,7 +139,6 @@ func bootstrap() provider.Bootstrap {
 	}
 }
 
-
 func TestNoCloudSeedIsSelfContainedAndUsesUnprivilegedRunner(t *testing.T) {
 	in := bootstrap()
 	seed := seedFor(in, "garm-vm-test")
