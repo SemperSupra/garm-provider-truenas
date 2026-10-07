@@ -15,8 +15,8 @@ func TestBootstrapPlanStagesOnlyNonSecretFiles(t *testing.T) {
 	if plan.FinalInit != DefaultInit {
 		t.Fatalf("unexpected final init: %q", plan.FinalInit)
 	}
-	if plan.InitEnv["GARM_INSTANCE_TOKEN"] != in.Token {
-		t.Fatal("initial init environment does not contain one-time bootstrap token")
+	if _, ok := plan.InitEnv["GARM_INSTANCE_TOKEN"]; ok {
+		t.Fatal("bootstrap credential must not appear in container.create init environment")
 	}
 	if plan.InitEnv["RUNNER_ALLOW_RUNASROOT"] != "1" {
 		t.Fatal("system-container runner must explicitly allow container-root execution")
