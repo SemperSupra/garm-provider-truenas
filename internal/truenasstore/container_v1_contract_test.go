@@ -41,9 +41,9 @@ func TestContainerV1Beta3SourceContractIsExplicitAndStillOpen(t *testing.T) {
 	}
 
 	for path, want := range map[string]string{
-		"src/middlewared/middlewared/api/v26_0_0/filesystem.py":      "50a1a4432b35149d1f6c38230e31a95f1ab0bf0a",
-		"src/middlewared/middlewared/plugins/filesystem.py":          "d8feb5e7d2d0565ad7ffe1ae79466bb072911541",
-		"src/middlewared/middlewared/plugins/container/utils.py":     "ee9b24e5e07e9e656b092e438d9e1752eaceb30a",
+		"src/middlewared/middlewared/api/v26_0_0/filesystem.py":  "50a1a4432b35149d1f6c38230e31a95f1ab0bf0a",
+		"src/middlewared/middlewared/plugins/filesystem.py":      "d8feb5e7d2d0565ad7ffe1ae79466bb072911541",
+		"src/middlewared/middlewared/plugins/container/utils.py": "ee9b24e5e07e9e656b092e438d9e1752eaceb30a",
 	} {
 		if got := cell.SourceBlobs[path]; got != want {
 			t.Fatalf("container bootstrap source drift at %s: got %q want %q", path, got, want)
