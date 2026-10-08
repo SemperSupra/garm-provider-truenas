@@ -40,6 +40,7 @@ type nestedContainerTarget struct {
 	Status           string            `json:"status"`
 }
 
+// nestedContainerRootfsProjection is source-derived; hidden datasets are not resolved through pool.dataset.query.
 type nestedContainerRootfsProjection struct {
 	DatasetTemplate    string `json:"dataset_template"`
 	MountpointTemplate string `json:"mountpoint_template"`
