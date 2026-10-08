@@ -11,16 +11,16 @@ func TestRunnerToolContractAcceptsPinnedLinuxX64Release(t *testing.T) {
 	}
 }
 
-func TestRunnerToolContractAcceptsNewerOfficialGitHubReleaseMetadata(t *testing.T) {
+func TestRunnerToolContractAcceptsDifferentOfficialGitHubReleaseMetadata(t *testing.T) {
 	bootstrap := validBootstrap()
-	filename := "actions-runner-linux-x64-2.337.0.tar.gz"
-	downloadURL := "https://github.com/actions/runner/releases/download/v2.337.0/" + filename
-	checksum := "70920811a4f8ad4328818682bca5c6469c1c942fab52448868071d0063816613"
+	filename := "actions-runner-linux-x64-2.336.0.tar.gz"
+	downloadURL := "https://github.com/actions/runner/releases/download/v2.336.0/" + filename
+	checksum := "04cf0be1aff4c3ec3554466c39124ca250e3effd8873bb7e8d68535aa9505d5d"
 	bootstrap.Tools[0].Filename = &filename
 	bootstrap.Tools[0].DownloadURL = &downloadURL
 	bootstrap.Tools[0].SHA256Checksum = &checksum
 	if err := validateRunnerToolContract(bootstrap); err != nil {
-		t.Fatalf("official newer GitHub runner metadata should not force provider runtime-pin drift: %v", err)
+		t.Fatalf("different official GitHub runner metadata should not silently change the provider runtime pin: %v", err)
 	}
 }
 
