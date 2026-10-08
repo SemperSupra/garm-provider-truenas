@@ -21,7 +21,7 @@ type fakeClient struct {
 	files         map[string]fakeFile
 	nextID        int
 	preserveState bool
-	badMountpoint bool
+	badDataset    bool
 }
 
 func newFakeClient() *fakeClient {
@@ -61,9 +61,13 @@ func (f *fakeClient) List(context.Context) ([]Container, error) {
 func (f *fakeClient) Create(_ context.Context, spec CreateSpec) (Container, error) {
 	id := f.nextID
 	f.nextID++
+	dataset := "tank/.truenas_containers/containers/" + spec.Name
+	if f.badDataset {
+		dataset = "tank/foreign_layout/" + spec.Name
+	}
 	item := Container{
 		ID: id, Name: spec.Name, Description: spec.Description, State: "STOPPED",
-		Dataset: "tank/.truenas_containers/containers/" + spec.Name,
+		Dataset: dataset,
 		Image:   spec.Image, Autostart: spec.Autostart, IDMapType: spec.IDMapType,
 		CapabilitiesPolicy: spec.CapabilitiesPolicy, Init: spec.Init, InitEnv: cloneEnv(spec.InitEnv),
 	}
@@ -81,12 +85,6 @@ func (f *fakeClient) Update(_ context.Context, id int, spec UpdateSpec) (Contain
 		f.items[id] = item
 	}
 	return item, nil
-}
-func (f *fakeClient) ResolveDatasetMountpoint(_ context.Context, dataset string) (string, error) {
-	if f.badMountpoint {
-		return "/etc", nil
-	}
-	return "/mnt/" + dataset, nil
 }
 func (f *fakeClient) PutFile(_ context.Context, p string, content []byte, mode int) error {
 	f.files[p] = fakeFile{content: append([]byte(nil), content...), mode: mode}
@@ -107,7 +105,7 @@ func (f *fakeClient) Start(_ context.Context, id int) error {
 	item.State = "RUNNING"
 	f.items[id] = item
 	if item.Init == BootstrapInitCommand {
-		root := "/mnt/" + item.Dataset
+		root, _ := containerRootfsMountpoint(item.Dataset, item.Name)
 		delete(f.files, root+BootstrapTokenPath)
 		f.files[root+InitWrapperMarkerPath] = fakeFile{content: []byte("init-wrapper-v1\n"), mode: 0o644}
 		f.files[root+BootstrapChildMarkerPath] = fakeFile{content: []byte("bootstrap-child-v1\n"), mode: 0o644}
@@ -150,7 +148,7 @@ func TestCreateStagesBootstrapAndScrubsDesiredState(t *testing.T) {
 	if got.ProviderID != "container:1" || got.PoolID != "pool-1" {
 		t.Fatalf("bad instance: %#v", got)
 	}
-	root := "/mnt/" + raw.Dataset
+	root, _ := containerRootfsMountpoint(raw.Dataset, raw.Name)
 	if _, ok := client.files[root+BootstrapTokenPath]; ok {
 		t.Fatal("one-shot credential file remained after wrapper execution")
 	}
@@ -186,9 +184,9 @@ func TestCreateCleansUpWhenScrubCannotBeProven(t *testing.T) {
 	}
 }
 
-func TestCreateRejectsUnsafeMountpointAndCleansUp(t *testing.T) {
+func TestCreateRejectsUnexpectedRootDatasetAndCleansUp(t *testing.T) {
 	client := newFakeClient()
-	client.badMountpoint = true
+	client.badDataset = true
 	manager, _ := New(client, "controller-1", client.version)
 	_, err := manager.Create(context.Background(), bootstrap())
 	if !errors.Is(err, provider.ErrManagedDrift) {
@@ -196,6 +194,29 @@ func TestCreateRejectsUnsafeMountpointAndCleansUp(t *testing.T) {
 	}
 	if len(client.items) != 0 {
 		t.Fatalf("unsafe staging residue: %#v", client.items)
+	}
+}
+
+func TestContainerRootfsProjectionMatchesExactBeta3Source(t *testing.T) {
+	got, err := containerRootfsMountpoint(
+		"tank/.truenas_containers/containers/garm_runner_1234",
+		"garm_runner_1234",
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got != "/.truenas_containers/tank/containers/garm_runner_1234" {
+		t.Fatalf("unexpected source-derived mountpoint %q", got)
+	}
+	for _, dataset := range []string{
+		"tank/containers/garm_runner_1234",
+		"tank/.truenas_containers/foreign/garm_runner_1234",
+		"tank/.truenas_containers/containers/other",
+		"/etc",
+	} {
+		if _, err := containerRootfsMountpoint(dataset, "garm_runner_1234"); !errors.Is(err, provider.ErrManagedDrift) {
+			t.Fatalf("expected source-projection drift for %q, got %v", dataset, err)
+		}
 	}
 }
 

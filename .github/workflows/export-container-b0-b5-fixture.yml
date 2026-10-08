@@ -16,8 +16,9 @@ on:
   push:
     branches:
       - prep/container-pre-b4-fixture-20261007
+      - fix/container-rootfs-projection-20261007
     paths:
-      - ".github/workflows/export-container-pre-b4-fixture.yml"
+      - ".github/workflows/export-container-b0-b5-fixture.yml"
       - "internal/containerbackend/**"
       - "internal/truenasstore/runtime_backend_catalog.go"
       - "internal/truenasstore/testdata/runtime-backend-target-matrix.json"
@@ -86,6 +87,9 @@ jobs:
             .target.status == "OPEN" and
             .target.middleware_commit == "81e1265a86083888ba94a2bdfc02ff5c9c5ef6a3" and
             .profile == "truenas-container-linux-general" and
+            .rootfs_projection.dataset_template == "{pool}/.truenas_containers/containers/{name}" and
+            .rootfs_projection.mountpoint_template == "/.truenas_containers/{pool}/containers/{name}" and
+            .rootfs_projection.source_path == "src/middlewared/middlewared/plugins/container/utils.py" and
             .image_family == "ubuntu:noble:amd64:default" and
             .desired_create.autostart == false and
             .desired_create.idmap_type == "DEFAULT" and
@@ -104,6 +108,9 @@ jobs:
             ([.staged_files[] | select(.contains_secret == false)] | length) == 2 and
             ([.staged_files[] | select(.contains_secret == false) | .sha256] | all(test("^[0-9a-f]{64}$"))) and
             .source_oracles.supported_rootfs_staging_defined == true and
+            .source_oracles.source_derived_rootfs_projection_required == true and
+            (.target.required_methods | index("pool.dataset.query")) == null and
+            .target.source_blobs["src/middlewared/middlewared/plugins/container/utils.py"] == "ee9b24e5e07e9e656b092e438d9e1752eaceb30a" and
             .source_oracles.create_arguments_credential_free == true and
             .source_oracles.credential_pipe_staging_required == true and
             .source_oracles.credential_file_delete_required == true and

@@ -197,10 +197,9 @@
             "src/middlewared/middlewared/api/v26_0_0/container.py": "6c1d11b9d42d5bfc6dd242d77c017b7fbe1a26aa",
             "src/middlewared/middlewared/api/v26_0_0/filesystem.py": "50a1a4432b35149d1f6c38230e31a95f1ab0bf0a",
             "src/middlewared/middlewared/plugins/filesystem.py": "d8feb5e7d2d0565ad7ffe1ae79466bb072911541",
-            "src/middlewared/middlewared/api/v26_0_0/pool_dataset.py": "a32b96aff2e63d780e3cf3786dca34cf06fd2468",
-            "src/middlewared/middlewared/plugins/pool_/dataset.py": "2bb0c179e0ee54e1cbdd5e106d31b81469d4218d"
+            "src/middlewared/middlewared/plugins/container/utils.py": "ee9b24e5e07e9e656b092e438d9e1752eaceb30a"
           },
-          "note": "First-class container API family; first implementation/real-system target. Exact source exposes secure DEFAULT idmap, capability policy, init/initenv, image registry, default bridge networking and lifecycle. Candidate bootstrap uses only supported middleware: resolve the stopped root dataset mountpoint with pool.dataset.query, stage non-secret bootstrap scripts with filesystem.put, launch once through a temporary init command + one-time initenv, then immediately scrub both init and initenv back to /sbin/init + empty environment while the running wrapper unsets GARM secrets before exec /sbin/init. filesystem.stat provides independent staged-file/read-back evidence. The profile explicitly allows GitHub runner execution as container root via RUNNER_ALLOW_RUNASROOT=1; DEFAULT idmap keeps container root host-unprivileged. Runtime evidence must still prove image dependencies, wrapper execution, callback/JIT boundary, persisted-secret scrub, lifecycle and zero residue. No Apps-style per-container memory ceiling is exposed; do not advertise per-runner memory isolation.",
+          "note": "First-class container API family; first implementation/real-system target. Exact source exposes secure DEFAULT idmap, capability policy, init/initenv, image registry, default bridge networking and lifecycle. Source fixes the created root dataset as <pool>/.truenas_containers/containers/<name> and its mounted rootfs as /.truenas_containers/<pool>/containers/<name>; the provider derives and validates that exact projection from container.create/query read-back instead of querying hidden datasets through pool.dataset.query. Candidate bootstrap uses only supported middleware: stage non-secret bootstrap scripts with filesystem.put at that rootfs, launch once through a temporary init command + one-time initenv, then immediately scrub both init and initenv back to /sbin/init + empty environment while the running wrapper unsets GARM secrets before exec /sbin/init. filesystem.stat provides independent staged-file/read-back evidence. The profile explicitly allows GitHub runner execution as container root via RUNNER_ALLOW_RUNASROOT=1; DEFAULT idmap keeps container root host-unprivileged. Runtime evidence must still prove image dependencies, wrapper execution, callback/JIT boundary, persisted-secret scrub, lifecycle and zero residue. No Apps-style per-container memory ceiling is exposed; do not advertise per-runner memory isolation.",
           "required_methods": [
             "system.version",
             "container.query",
@@ -210,7 +209,6 @@
             "container.start",
             "container.stop",
             "container.image.query_registry",
-            "pool.dataset.query",
             "filesystem.put",
             "filesystem.stat"
           ]
