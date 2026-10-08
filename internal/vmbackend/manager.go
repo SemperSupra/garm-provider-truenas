@@ -14,11 +14,13 @@ import (
 )
 
 const (
-	FlavorLinuxGeneral   = "truenas-vm-linux-general"
-	TemplateFamily       = "ubuntu-24.04-amd64-template"
-	TemplateVersion      = "ubuntu-24.04-release-20260926-amd64"
-	TemplateSourceURL    = "https://cloud-images.ubuntu.com/releases/noble/release-20260926/ubuntu-24.04-server-cloudimg-amd64.img"
-	TemplateSourceSHA256 = "6a81c37564db9b1ee84e141922625e1d7c5b389b99bb3c572e0243607d5bb4d2"
+	FlavorLinuxGeneral              = "truenas-vm-linux-general"
+	TemplateFamily                  = "ubuntu-24.04-amd64-template"
+	TemplateVersion                 = "ubuntu-24.04-release-20260926-amd64"
+	TemplateRuntimeName             = "garm_tpl_ubuntu_2404_20260926_amd64"
+	TemplateSourceURL               = "https://cloud-images.ubuntu.com/releases/noble/release-20260926/ubuntu-24.04-server-cloudimg-amd64.img"
+	TemplateSourceSHA256            = "6a81c37564db9b1ee84e141922625e1d7c5b389b99bb3c572e0243607d5bb4d2"
+	VMBootstrapConsumedMarkerPrefix = "GARM_VM_BOOTSTRAP_CONSUMED_V1:"
 )
 
 const vmBootstrapLauncher = `#!/bin/sh
@@ -26,7 +28,11 @@ set -eu
 umask 077
 
 env_file="${1:?bootstrap env file is required}"
+consumption_marker="${2:?bootstrap consumption marker is required}"
 [ -f "$env_file" ] || exit 40
+case "$consumption_marker" in
+  *[!A-Za-z0-9_:]*) exit 44 ;;
+esac
 
 callback_url=''
 metadata_url=''
@@ -53,6 +59,7 @@ while IFS= read -r line || [ -n "$line" ]; do
   esac
 done < "$env_file"
 rm -f "$env_file"
+printf '%s\n' "$consumption_marker" >/dev/console
 
 : "${callback_url:?missing callback URL}"
 : "${metadata_url:?missing metadata URL}"
@@ -78,9 +85,12 @@ exec /usr/sbin/runuser -u garm-runner -- /usr/bin/env \
 `
 
 type Template struct {
-	ID      int
-	Name    string
-	Version string
+	ID           int
+	Name         string
+	RuntimeName  string
+	Version      string
+	SourceURL    string
+	SourceSHA256 string
 }
 
 type VM struct {
@@ -104,8 +114,9 @@ type CloneSpec struct {
 }
 
 type SeedSpec struct {
-	MetaData string
-	UserData string
+	MetaData          string
+	UserData          string
+	ConsumptionMarker string
 }
 
 type Client interface {
@@ -185,8 +196,8 @@ func (m *Manager) Create(ctx context.Context, in provider.Bootstrap) (provider.I
 	if err != nil {
 		return provider.Instance{}, fmt.Errorf("resolve exact VM template: %w", err)
 	}
-	if template.Name != TemplateFamily || template.ID <= 0 || template.Version != TemplateVersion {
-		return provider.Instance{}, fmt.Errorf("template family/version did not resolve exactly: %w", provider.ErrManagedDrift)
+	if err := verifyTemplate(template); err != nil {
+		return provider.Instance{}, fmt.Errorf("template identity did not resolve exactly: %w", err)
 	}
 
 	desc, err := encodeOwnership(ownership{
@@ -463,8 +474,8 @@ func (m *Manager) verifyRuntime(item VM) error {
 	if item.Autostart || item.VCPUs != provider.GeneralCPU || item.MemoryBytes != provider.GeneralMemoryBytes {
 		return provider.ErrManagedDrift
 	}
-	if item.Template.Name != TemplateFamily || item.Template.ID <= 0 || item.Template.Version != TemplateVersion {
-		return provider.ErrManagedDrift
+	if err := verifyTemplate(item.Template); err != nil {
+		return err
 	}
 	switch strings.ToUpper(item.State) {
 	case "RUNNING", "STOPPED":
@@ -472,6 +483,18 @@ func (m *Manager) verifyRuntime(item VM) error {
 	default:
 		return provider.ErrManagedDrift
 	}
+}
+
+func verifyTemplate(template Template) error {
+	if template.ID <= 0 ||
+		template.Name != TemplateFamily ||
+		template.RuntimeName != TemplateRuntimeName ||
+		template.Version != TemplateVersion ||
+		template.SourceURL != TemplateSourceURL ||
+		template.SourceSHA256 != TemplateSourceSHA256 {
+		return provider.ErrManagedDrift
+	}
+	return nil
 }
 
 func validateBootstrap(in provider.Bootstrap) error {
@@ -497,6 +520,7 @@ func validateBootstrap(in provider.Bootstrap) error {
 
 func seedFor(in provider.Bootstrap, hostname string) SeedSpec {
 	meta := fmt.Sprintf("instance-id: %s\nlocal-hostname: %s\n", hostname, hostname)
+	marker := VMBootstrapConsumedMarkerPrefix + hostname
 	env := fmt.Sprintf(
 		"GARM_CALLBACK_URL=%s\n"+
 			"GARM_METADATA_URL=%s\n"+
@@ -526,8 +550,8 @@ func seedFor(in provider.Bootstrap, hostname string) SeedSpec {
 	appendCloudConfigFile(&user, "/usr/local/libexec/garm-bootstrap", "0755", "root:root", vmBootstrapLauncher)
 	appendCloudConfigFile(&user, "/run/garm/bootstrap.env", "0600", "root:root", env)
 	user.WriteString("runcmd:\n")
-	user.WriteString("  - [\"/usr/local/libexec/garm-bootstrap\", \"/run/garm/bootstrap.env\"]\n")
-	return SeedSpec{MetaData: meta, UserData: user.String()}
+	fmt.Fprintf(&user, "  - [\"/usr/local/libexec/garm-bootstrap\", \"/run/garm/bootstrap.env\", \"%s\"]\n", marker)
+	return SeedSpec{MetaData: meta, UserData: user.String(), ConsumptionMarker: marker}
 }
 
 func vmRunnerBootstrapScript() string {
@@ -569,32 +593,32 @@ func decodeOwnership(raw string) (ownership, error) {
 }
 
 func ownedName(controllerID, requested string) string {
-	raw := sanitize(controllerID) + "-" + sanitize(requested)
+	raw := sanitizeVMNamePart(controllerID) + "_" + sanitizeVMNamePart(requested)
 	sum := sha256.Sum256([]byte(raw))
-	prefix := strings.Trim("garm-"+raw, "-")
+	prefix := strings.Trim("garm_"+raw, "_")
 	if len(prefix) > 48 {
-		prefix = strings.Trim(prefix[:48], "-")
+		prefix = strings.Trim(prefix[:48], "_")
 	}
-	return prefix + "-" + hex.EncodeToString(sum[:4])
+	return prefix + "_" + hex.EncodeToString(sum[:4])
 }
 
-func sanitize(in string) string {
+func sanitizeVMNamePart(in string) string {
 	in = strings.ToLower(in)
 	var b strings.Builder
-	lastDash := false
+	lastUnderscore := false
 	for _, r := range in {
 		ok := (r >= 'a' && r <= 'z') || (r >= '0' && r <= '9')
 		if ok {
 			b.WriteRune(r)
-			lastDash = false
+			lastUnderscore = false
 			continue
 		}
-		if !lastDash {
-			b.WriteByte('-')
-			lastDash = true
+		if !lastUnderscore {
+			b.WriteByte('_')
+			lastUnderscore = true
 		}
 	}
-	return strings.Trim(b.String(), "-")
+	return strings.Trim(b.String(), "_")
 }
 
 func providerIDFor(id int) string {

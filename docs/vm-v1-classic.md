@@ -67,7 +67,11 @@ The source explicitly skips `RAW` disks during clone, so a RAW-backed template
 must fail qualification rather than silently producing a diskless runner.
 
 The immutable template itself is deployment/Foundry state, not provider-owned
-ephemeral capacity. The initial source is pinned to Canonical's dated Ubuntu
+ephemeral capacity. Its classic TrueNAS VM name is fixed as
+`garm_tpl_ubuntu_2404_20260926_amd64`; classic `vm.*` accepts only letters,
+digits, and underscores, so provider-owned runner names use the same restricted
+alphabet and fail source/static validation if that invariant changes. The initial
+source is pinned to Canonical's dated Ubuntu
 24.04 release image `20260926`:
 `ubuntu-24.04-server-cloudimg-amd64.img`, SHA-256
 `6a81c37564db9b1ee84e141922625e1d7c5b389b99bb3c572e0243607d5bb4d2`.
@@ -107,8 +111,12 @@ undocumented baked-file dependency.
 
 The seed remains attached while the VM is active because supported TrueNAS
 `vm.device.delete` forbids live removal. The one-shot environment file,
-however, must be deleted before the runner process starts. Seed CDROM and
-dataset retirement still occurs only after the VM is stopped.
+however, must be deleted before the runner process starts. Immediately after
+that deletion the launcher emits the deterministic
+`GARM_VM_BOOTSTRAP_CONSUMED_V1:<provider-vm-name>` marker to the guest console.
+The TrueNAS console is therefore the independent pre-B4 consumption oracle; it
+does not imply callback/JIT success. Seed CDROM and dataset retirement still
+occurs only after the VM is stopped.
 
 ## Ownership and lifecycle
 
