@@ -61,6 +61,21 @@ func validBootstrap() Bootstrap {
 	}
 }
 
+func TestRunnerPayloadMatchesCurrentGHAAgentReference(t *testing.T) {
+	if RunnerVersion != "2.337.0" {
+		t.Fatalf("unexpected fixed runner version: %s", RunnerVersion)
+	}
+	if RunnerImage != "ghcr.io/actions/actions-runner:2.337.0@sha256:e5496277be5d09bc968b3d64911b74e219ac4a3f2edce956a3ecf9271bea1ef4" {
+		t.Fatalf("unexpected runner image identity: %s", RunnerImage)
+	}
+	if RunnerToolFilename != "actions-runner-linux-x64-2.337.0.tar.gz" {
+		t.Fatalf("unexpected runner filename: %s", RunnerToolFilename)
+	}
+	if RunnerToolSHA256 != "70920811a4f8ad4328818682bca5c6469c1c942fab52448868071d0063816613" {
+		t.Fatalf("unexpected runner tool checksum: %s", RunnerToolSHA256)
+	}
+}
+
 func TestCreateUsesLockedSecurityProfile(t *testing.T) {
 	client := newFakeClient()
 	manager, err := NewManager(client, "controller-1234567890")
