@@ -17,6 +17,7 @@ on:
     branches:
       - prep/container-pre-b4-fixture-20261007
       - fix/container-rootfs-projection-20261007
+      - runner/align-gha-agent-2-337-0-20261008
     paths:
       - ".github/workflows/export-container-b0-b5-fixture.yml"
       - "internal/containerbackend/**"
@@ -91,6 +92,9 @@ jobs:
             .rootfs_projection.mountpoint_template == "/.truenas_containers/{pool}/containers/{name}" and
             .rootfs_projection.source_path == "src/middlewared/middlewared/plugins/container/utils.py" and
             .image_family == "ubuntu:noble:amd64:default" and
+            .runner.tool_url == "https://github.com/actions/runner/releases/download/v2.337.0/actions-runner-linux-x64-2.337.0.tar.gz" and
+            .runner.tool_filename == "actions-runner-linux-x64-2.337.0.tar.gz" and
+            .runner.tool_sha256 == "70920811a4f8ad4328818682bca5c6469c1c942fab52448868071d0063816613" and
             .desired_create.autostart == false and
             .desired_create.idmap_type == "DEFAULT" and
             .desired_create.capabilities_policy == "DEFAULT" and

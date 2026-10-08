@@ -20,11 +20,11 @@ var (
 
 const (
 	FlavorLinuxGeneral = "truenas-linux-general"
-	RunnerImage        = "ghcr.io/actions/actions-runner:2.336.0@sha256:0cfdcc701ce933c6d243c6b0b2da767366dc9f2e99961d4c3754b0b78084cdda"
-	RunnerVersion      = "2.336.0"
+	RunnerImage        = "ghcr.io/actions/actions-runner:2.337.0@sha256:e5496277be5d09bc968b3d64911b74e219ac4a3f2edce956a3ecf9271bea1ef4"
+	RunnerVersion      = "2.337.0"
 	RunnerToolFilename = "actions-runner-linux-x64-" + RunnerVersion + ".tar.gz"
 	RunnerToolURL      = "https://github.com/actions/runner/releases/download/v" + RunnerVersion + "/" + RunnerToolFilename
-	RunnerToolSHA256   = "04cf0be1aff4c3ec3554466c39124ca250e3effd8873bb7e8d68535aa9505d5d"
+	RunnerToolSHA256   = "70920811a4f8ad4328818682bca5c6469c1c942fab52448868071d0063816613"
 	GeneralCPU         = 4
 	GeneralMemoryBytes = int64(8 * 1024 * 1024 * 1024)
 	TrueNASAppNameMax  = 40
