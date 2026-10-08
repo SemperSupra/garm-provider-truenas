@@ -17,6 +17,7 @@ on:
     branches:
       - prep/vm-pre-b4-fixture-20261007
       - fix/vm-runtime-identity-consumption-oracle-20261007
+      - runner/align-gha-agent-2-337-0-20261008
     paths:
       - ".github/workflows/export-vm-pre-b4-fixture.yml"
       - "internal/vmbackend/**"
@@ -92,6 +93,9 @@ jobs:
             (.target.required_methods | index("vm.device.delete")) != null and
             (.target.required_methods | index("pool.dataset.create")) != null and
             .profile == "truenas-vm-linux-general" and
+            .runner.tool_url == "https://github.com/actions/runner/releases/download/v2.337.0/actions-runner-linux-x64-2.337.0.tar.gz" and
+            .runner.tool_filename == "actions-runner-linux-x64-2.337.0.tar.gz" and
+            .runner.tool_sha256 == "70920811a4f8ad4328818682bca5c6469c1c942fab52448868071d0063816613" and
             .template_family == "ubuntu-24.04-amd64-template" and
             .template_version == "ubuntu-24.04-release-20260926-amd64" and
             .template_runtime_name == "garm_tpl_ubuntu_2404_20260926_amd64" and
