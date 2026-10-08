@@ -11,22 +11,22 @@ import (
 )
 
 type nestedContainerPreB4Fixture struct {
-	Schema            string                       `json:"schema"`
-	ProducerSource    string                       `json:"producer_source"`
-	Authority         string                       `json:"authority"`
-	Target            nestedContainerTarget        `json:"target"`
-	Profile           string                       `json:"profile"`
-	ImageFamily       string                       `json:"image_family"`
-	ExpectedName      string                       `json:"expected_name"`
+	Schema            string                          `json:"schema"`
+	ProducerSource    string                          `json:"producer_source"`
+	Authority         string                          `json:"authority"`
+	Target            nestedContainerTarget           `json:"target"`
+	Profile           string                          `json:"profile"`
+	ImageFamily       string                          `json:"image_family"`
+	ExpectedName      string                          `json:"expected_name"`
 	RootfsProjection  nestedContainerRootfsProjection `json:"rootfs_projection"`
-	ExpectedOwnership map[string]string            `json:"expected_ownership"`
-	DesiredCreate     nestedContainerDesiredCreate `json:"desired_create"`
-	StagedFiles       []StagedFile                 `json:"staged_files"`
-	ExecutionMarkers  []string                     `json:"execution_markers"`
-	ExpectedPostStart nestedContainerPostStart     `json:"expected_post_start"`
-	Runner            nestedContainerRunner        `json:"runner"`
-	SourceOracles     map[string]bool              `json:"source_oracles"`
-	ClaimBoundary     string                       `json:"claim_boundary"`
+	ExpectedOwnership map[string]string               `json:"expected_ownership"`
+	DesiredCreate     nestedContainerDesiredCreate    `json:"desired_create"`
+	StagedFiles       []StagedFile                    `json:"staged_files"`
+	ExecutionMarkers  []string                        `json:"execution_markers"`
+	ExpectedPostStart nestedContainerPostStart        `json:"expected_post_start"`
+	Runner            nestedContainerRunner           `json:"runner"`
+	SourceOracles     map[string]bool                 `json:"source_oracles"`
+	ClaimBoundary     string                          `json:"claim_boundary"`
 }
 
 type nestedContainerTarget struct {
@@ -164,22 +164,22 @@ func TestExportNestedContainerPreB4Fixture(t *testing.T) {
 			ToolSHA256:   provider.RunnerToolSHA256,
 		},
 		SourceOracles: map[string]bool{
-			"exact_version_required":                   true,
-			"foreign_ownership_rejected":               true,
-			"supported_rootfs_staging_defined":         true,
+			"exact_version_required":                    true,
+			"foreign_ownership_rejected":                true,
+			"supported_rootfs_staging_defined":          true,
 			"source_derived_rootfs_projection_required": true,
-			"create_arguments_credential_free":         true,
-			"credential_pipe_staging_required":         true,
-			"credential_file_delete_required":          true,
-			"temporary_init_scrub_required":            true,
-			"runner_root_under_default_idmap_explicit": true,
-			"external_restart_forbidden":               true,
-			"active_delete_refused":                    true,
-			"final_absence_required":                   true,
-			"per_runner_memory_isolation_claimed":      false,
-			"runtime_admission_claimed":                false,
-			"bootstrap_execution_claimed":              false,
-			"github_jit_boundary_claimed":              false,
+			"create_arguments_credential_free":          true,
+			"credential_pipe_staging_required":          true,
+			"credential_file_delete_required":           true,
+			"temporary_init_scrub_required":             true,
+			"runner_root_under_default_idmap_explicit":  true,
+			"external_restart_forbidden":                true,
+			"active_delete_refused":                     true,
+			"final_absence_required":                    true,
+			"per_runner_memory_isolation_claimed":       false,
+			"runtime_admission_claimed":                 false,
+			"bootstrap_execution_claimed":               false,
+			"github_jit_boundary_claimed":               false,
 		},
 		ClaimBoundary: "Provider-owned BETA.3 container-v1 source/static pre-B4 fixture. It binds exact target, ownership, secure defaults, source-derived hidden rootfs projection plus supported filesystem.put/stat staging, a credential-free container.create payload, one 0600 runtime credential file delivered only through the filesystem.put input pipe, temporary init, post-start desired-state scrub, credential-file deletion, execution markers, official runner identity and retirement semantics. The public fixture contains only the literal runtime-token placeholder, never a live credential. It does not claim callback/JIT, runtime admission, or per-runner memory isolation.",
 	}
