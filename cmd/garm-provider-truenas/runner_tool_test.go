@@ -52,7 +52,7 @@ func TestRunnerToolContractRejectsURLDrift(t *testing.T) {
 
 func TestRunnerToolContractRejectsFilenameURLVersionMismatch(t *testing.T) {
 	bootstrap := validBootstrap()
-	filename := "actions-runner-linux-x64-2.337.0.tar.gz"
+	filename := "actions-runner-linux-x64-2.336.0.tar.gz"
 	bootstrap.Tools[0].Filename = &filename
 	if err := validateRunnerToolContract(bootstrap); err == nil || !strings.Contains(err.Error(), "URL") {
 		t.Fatalf("runner filename/URL version mismatch should fail closed, got %v", err)
