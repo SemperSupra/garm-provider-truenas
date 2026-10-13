@@ -89,8 +89,8 @@ jobs:
             .target.middleware_commit == "81e1265a86083888ba94a2bdfc02ff5c9c5ef6a3" and
             .profile == "truenas-container-linux-general" and
             .rootfs_projection.dataset_template == "{pool}/.truenas_containers/containers/{name}" and
-            .rootfs_projection.mountpoint_template == "/.truenas_containers/{pool}/containers/{name}" and
-            .rootfs_projection.source_path == "src/middlewared/middlewared/plugins/container/utils.py" and
+            .rootfs_projection.mountpoint_template == "/mnt/.truenas_containers/{pool}/containers/{name}" and
+            .rootfs_projection.source_path == "src/middlewared/middlewared/plugins/container/lifecycle.py" and
             .image_family == "ubuntu:noble:amd64:default" and
             .runner.tool_url == "https://github.com/actions/runner/releases/download/v2.337.0/actions-runner-linux-x64-2.337.0.tar.gz" and
             .runner.tool_filename == "actions-runner-linux-x64-2.337.0.tar.gz" and
