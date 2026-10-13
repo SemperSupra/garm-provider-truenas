@@ -276,7 +276,7 @@ func (m *Manager) verifyFailedCreateIdentity(item, created Container, poolID str
 func (m *Manager) cleanupFailedCreate(ctx context.Context, created Container, poolID string) error {
 	item, err := m.client.Get(ctx, created.ID)
 	if errors.Is(err, provider.ErrNotFound) {
-		return m.verifyFailedCreateAbsence(ctx, created)
+		return m.verifyContainerAbsence(ctx, created)
 	}
 	if err != nil {
 		return err
@@ -291,7 +291,7 @@ func (m *Manager) cleanupFailedCreate(ctx context.Context, created Container, po
 	}
 	item, err = m.client.Get(ctx, created.ID)
 	if errors.Is(err, provider.ErrNotFound) {
-		return m.verifyFailedCreateAbsence(ctx, created)
+		return m.verifyContainerAbsence(ctx, created)
 	}
 	if err != nil {
 		return err
@@ -305,22 +305,22 @@ func (m *Manager) cleanupFailedCreate(ctx context.Context, created Container, po
 	if err := m.client.Delete(ctx, created.ID); err != nil {
 		return err
 	}
-	return m.verifyFailedCreateAbsence(ctx, created)
+	return m.verifyContainerAbsence(ctx, created)
 }
 
 // Both lookups are needed: an ID may disappear while an instance with the
 // original owned name remains. Neither read makes ID-only mutation atomic;
 // runtime qualification must prove exclusive control of the disposable target.
-func (m *Manager) verifyFailedCreateAbsence(ctx context.Context, created Container) error {
+func (m *Manager) verifyContainerAbsence(ctx context.Context, created Container) error {
 	if _, err := m.client.Get(ctx, created.ID); err == nil {
-		return fmt.Errorf("container ID remains after failed-create cleanup: %w", provider.ErrManagedDrift)
+		return fmt.Errorf("container ID remains after delete: %w", provider.ErrManagedDrift)
 	} else if !errors.Is(err, provider.ErrNotFound) {
-		return fmt.Errorf("verify failed-create container ID absence: %w", err)
+		return fmt.Errorf("verify container ID absence: %w", err)
 	}
 	if _, err := m.client.GetByName(ctx, created.Name); err == nil {
-		return fmt.Errorf("container name remains after failed-create cleanup: %w", provider.ErrManagedDrift)
+		return fmt.Errorf("container name remains after delete: %w", provider.ErrManagedDrift)
 	} else if !errors.Is(err, provider.ErrNotFound) {
-		return fmt.Errorf("verify failed-create container name absence: %w", err)
+		return fmt.Errorf("verify container name absence: %w", err)
 	}
 	return nil
 }
@@ -407,13 +407,7 @@ func (m *Manager) Delete(ctx context.Context, providerID string) error {
 	if err := m.client.Delete(ctx, item.ID); err != nil {
 		return err
 	}
-	if _, err := m.client.Get(ctx, item.ID); !errors.Is(err, provider.ErrNotFound) {
-		if err == nil {
-			return fmt.Errorf("container still exists after delete: %w", provider.ErrManagedDrift)
-		}
-		return fmt.Errorf("verify container absence: %w", err)
-	}
-	return nil
+	return m.verifyContainerAbsence(ctx, item)
 }
 
 func (m *Manager) RemoveAll(ctx context.Context) error {
