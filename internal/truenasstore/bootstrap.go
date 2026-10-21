@@ -8,6 +8,15 @@ import "strings"
 // installed from the exact, checksummed GitHub runner release selected for this
 // MVP. JIT credential bytes live only on a non-executable tmpfs; runner and
 // work files use the one-job container writable layer so they remain executable.
+//
+// The digest-pinned runner image already ships the complete runner tree for the
+// pinned release under /home/runner. When that image-resident tree is complete
+// and its Runner.Listener reports exactly the version encoded in the verified
+// GARM_RUNNER_FILENAME, the bootstrap reuses it in place instead of fetching the
+// ~215 MB release archive over the WAN on every ephemeral boot. Integrity of the
+// reused tree derives from the provider-enforced immutable image digest. Any
+// incompleteness or version disagreement falls back to the original checksummed
+// download path, which remains the fail-closed authority.
 const containerBootstrapScript = `set -eu
 umask 077
 
@@ -19,6 +28,7 @@ umask 077
 : "${GARM_RUNNER_SHA256:?GARM_RUNNER_SHA256 is required}"
 
 RUNNER_HOME="${GARM_BOOTSTRAP_RUNNER_HOME:-/home/runner/actions-runner}"
+PRESTAGED_RUNNER_HOME="${GARM_BOOTSTRAP_PRESTAGED_RUNNER_HOME-/home/runner}"
 JIT_DIR="${GARM_BOOTSTRAP_JIT_DIR:-/run/garm-jit}"
 RUNNER_ARCHIVE="${GARM_BOOTSTRAP_RUNNER_ARCHIVE:-/home/runner/${GARM_RUNNER_FILENAME}}"
 MAX_ATTEMPTS="${GARM_BOOTSTRAP_MAX_ATTEMPTS:-5}"
@@ -131,19 +141,44 @@ download_runner() {
   return 1
 }
 
-post_status installing 'downloading verified runner payload' || exit 20
-download_runner || {
-  post_status failed 'failed to download or verify runner payload' || true
-  exit 21
+expected_runner_version=$(printf '%s' "$GARM_RUNNER_FILENAME" | \
+  sed -n 's/^actions-runner-linux-x64-\([0-9][0-9]*\.[0-9][0-9]*\.[0-9][0-9]*\)\.tar\.gz$/\1/p')
+
+prestaged_runner_matches() {
+  home="$1"
+  [ -n "$home" ] || return 1
+  [ -n "$expected_runner_version" ] || return 1
+  [ -x "$home/run.sh" ] || return 1
+  [ -x "$home/bin/Runner.Listener" ] || return 1
+  [ -x "$home/externals/node24/bin/node" ] || return 1
+  [ -w "$home" ] || return 1
+  [ ! -e "$home/.runner" ] && [ ! -L "$home/.runner" ] || return 1
+  [ ! -e "$home/.credentials" ] && [ ! -L "$home/.credentials" ] || return 1
+  [ ! -e "$home/.credentials_rsaparams" ] && [ ! -L "$home/.credentials_rsaparams" ] || return 1
+  actual_version=$(env -u GARM_INSTANCE_TOKEN "$home/bin/Runner.Listener" --version 2>/dev/null | \
+    tr -d '\r' | sed -n '1p') || return 1
+  [ "$actual_version" = "$expected_runner_version" ]
 }
 
-rm -rf "$RUNNER_HOME"
-mkdir -p "$RUNNER_HOME" "$JIT_DIR"
-tar xzf "$RUNNER_ARCHIVE" -C "$RUNNER_HOME" || {
-  post_status failed 'failed to extract runner payload' || true
-  exit 22
-}
-rm -f "$RUNNER_ARCHIVE"
+if prestaged_runner_matches "$PRESTAGED_RUNNER_HOME"; then
+  RUNNER_HOME="$PRESTAGED_RUNNER_HOME"
+  post_status installing 'using image-resident runner payload' || exit 20
+  mkdir -p "$JIT_DIR"
+else
+  post_status installing 'downloading verified runner payload' || exit 20
+  download_runner || {
+    post_status failed 'failed to download or verify runner payload' || true
+    exit 21
+  }
+
+  rm -rf "$RUNNER_HOME"
+  mkdir -p "$RUNNER_HOME" "$JIT_DIR"
+  tar xzf "$RUNNER_ARCHIVE" -C "$RUNNER_HOME" || {
+    post_status failed 'failed to extract runner payload' || true
+    exit 22
+  }
+  rm -f "$RUNNER_ARCHIVE"
+fi
 
 if [ ! -x "$RUNNER_HOME/run.sh" ] || [ ! -x "$RUNNER_HOME/bin/Runner.Listener" ]; then
   post_status failed 'verified runner payload is incomplete' || true
