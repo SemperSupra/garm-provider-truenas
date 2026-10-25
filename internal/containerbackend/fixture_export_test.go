@@ -134,8 +134,8 @@ func TestExportNestedContainerPreB4Fixture(t *testing.T) {
 		ExpectedName: ownedName("nested-container-controller", in.Name),
 		RootfsProjection: nestedContainerRootfsProjection{
 			DatasetTemplate:    "{pool}/.truenas_containers/containers/{name}",
-			MountpointTemplate: "/.truenas_containers/{pool}/containers/{name}",
-			SourcePath:         "src/middlewared/middlewared/plugins/container/utils.py",
+			MountpointTemplate: "/mnt/.truenas_containers/{pool}/containers/{name}",
+			SourcePath:         "src/middlewared/middlewared/plugins/container/lifecycle.py",
 		},
 		ExpectedOwnership: map[string]string{
 			"schema":        "semper-supra.garm-container-owner/1",

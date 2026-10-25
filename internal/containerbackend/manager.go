@@ -163,51 +163,44 @@ func (m *Manager) Create(ctx context.Context, in provider.Bootstrap) (provider.I
 		return provider.Instance{}, fmt.Errorf("create container: %w", err)
 	}
 	if err := m.verifyBootstrapOwnership(created, in.PoolID, plan); err != nil {
-		return provider.Instance{}, err
+		return provider.Instance{}, fmt.Errorf("created container identity or bootstrap state is uncertain; residue may remain: %w", err)
 	}
 	if !strings.EqualFold(created.State, "STOPPED") {
-		return provider.Instance{}, fmt.Errorf("new container unexpectedly active before bootstrap admission: %w", provider.ErrManagedDrift)
+		return provider.Instance{}, fmt.Errorf("new container unexpectedly active before bootstrap admission; residue may remain: %w", provider.ErrManagedDrift)
 	}
 
 	mountpoint, err := m.stageBootstrapFiles(ctx, created, plan)
 	if err != nil {
-		_ = m.cleanupFailedCreate(ctx, created.ID)
-		return provider.Instance{}, err
+		return provider.Instance{}, m.failCreate(ctx, created, in.PoolID, err)
 	}
 
 	if err := m.client.Start(ctx, created.ID); err != nil {
-		_ = m.cleanupFailedCreate(ctx, created.ID)
-		return provider.Instance{}, fmt.Errorf("start container: %w", err)
+		return provider.Instance{}, m.failCreate(ctx, created, in.PoolID, fmt.Errorf("start container: %w", err))
 	}
 
 	if _, err := m.client.Update(ctx, created.ID, UpdateSpec{
 		Init:    plan.FinalInit,
 		InitEnv: cloneEnv(plan.FinalEnv),
 	}); err != nil {
-		_ = m.cleanupFailedCreate(ctx, created.ID)
-		return provider.Instance{}, fmt.Errorf("scrub persisted bootstrap desired state: %w", err)
+		return provider.Instance{}, m.failCreate(ctx, created, in.PoolID, fmt.Errorf("scrub persisted bootstrap desired state: %w", err))
 	}
 
 	observed, err := m.client.Get(ctx, created.ID)
 	if err != nil {
-		_ = m.cleanupFailedCreate(ctx, created.ID)
-		return provider.Instance{}, fmt.Errorf("read back scrubbed container: %w", err)
+		return provider.Instance{}, m.failCreate(ctx, created, in.PoolID, fmt.Errorf("read back scrubbed container: %w", err))
 	}
 	if err := m.verifyOwnership(observed, in.PoolID); err != nil {
-		_ = m.cleanupFailedCreate(ctx, created.ID)
-		return provider.Instance{}, err
+		return provider.Instance{}, m.failCreate(ctx, created, in.PoolID, err)
 	}
 	if !strings.EqualFold(observed.State, "RUNNING") {
-		_ = m.cleanupFailedCreate(ctx, created.ID)
-		return provider.Instance{}, fmt.Errorf("container did not remain running after bootstrap-state scrub: %w", provider.ErrManagedDrift)
+		return provider.Instance{}, m.failCreate(ctx, created, in.PoolID, fmt.Errorf("container did not remain running after bootstrap-state scrub: %w", provider.ErrManagedDrift))
 	}
 	tokenPath := path.Join(mountpoint, strings.TrimPrefix(BootstrapTokenPath, "/"))
 	if _, err := m.client.StatFile(ctx, tokenPath); !errors.Is(err, provider.ErrNotFound) {
-		_ = m.cleanupFailedCreate(ctx, created.ID)
 		if err == nil {
-			return provider.Instance{}, fmt.Errorf("bootstrap token file remains after init wrapper execution: %w", provider.ErrManagedDrift)
+			return provider.Instance{}, m.failCreate(ctx, created, in.PoolID, fmt.Errorf("bootstrap token file remains after init wrapper execution: %w", provider.ErrManagedDrift))
 		}
-		return provider.Instance{}, fmt.Errorf("verify bootstrap token file absence: %w", err)
+		return provider.Instance{}, m.failCreate(ctx, created, in.PoolID, fmt.Errorf("verify bootstrap token file absence: %w", err))
 	}
 	return toInstance(observed, in.PoolID), nil
 }
@@ -248,44 +241,88 @@ func (m *Manager) stageBootstrapFiles(ctx context.Context, item Container, plan 
 }
 
 func containerRootfsMountpoint(dataset, name string) (string, error) {
-	dataset = strings.Trim(strings.TrimSpace(dataset), "/")
-	name = strings.TrimSpace(name)
 	parts := strings.Split(dataset, "/")
 	if len(parts) != 4 ||
-		parts[0] == "" ||
+		parts[0] == "" || parts[0] == "." || parts[0] == ".." ||
 		parts[1] != ".truenas_containers" ||
 		parts[2] != "containers" ||
 		parts[3] != name ||
-		name == "" {
+		name == "" || name == "." || name == ".." ||
+		strings.TrimSpace(dataset) != dataset || strings.TrimSpace(name) != name {
 		return "", fmt.Errorf("unexpected container root dataset %q for %q: %w", dataset, name, provider.ErrManagedDrift)
 	}
-	return path.Join("/.truenas_containers", parts[0], "containers", name), nil
+	return path.Join("/mnt/.truenas_containers", parts[0], "containers", name), nil
 }
 
-func (m *Manager) cleanupFailedCreate(ctx context.Context, id int) error {
-	item, err := m.client.Get(ctx, id)
+func (m *Manager) failCreate(ctx context.Context, created Container, poolID string, cause error) error {
+	if err := m.cleanupFailedCreate(ctx, created, poolID); err != nil {
+		return errors.Join(cause, fmt.Errorf("failed-create cleanup left uncertain residue: %w", err))
+	}
+	return cause
+}
+
+func (m *Manager) verifyFailedCreateIdentity(item, created Container, poolID string) error {
+	owner, err := m.decodeOwnedIdentity(item)
+	if err != nil {
+		return err
+	}
+	if owner.PoolID != poolID || item.ID != created.ID || item.Name != created.Name ||
+		item.Description != created.Description || item.Dataset != created.Dataset || item.Image != created.Image {
+		return provider.ErrForeign
+	}
+	return m.verifyBaseRuntime(item)
+}
+
+func (m *Manager) cleanupFailedCreate(ctx context.Context, created Container, poolID string) error {
+	item, err := m.client.Get(ctx, created.ID)
 	if errors.Is(err, provider.ErrNotFound) {
-		return nil
+		return m.verifyFailedCreateAbsence(ctx, created)
 	}
 	if err != nil {
 		return err
 	}
+	if err := m.verifyFailedCreateIdentity(item, created, poolID); err != nil {
+		return err
+	}
 	if strings.EqualFold(item.State, "RUNNING") {
-		if err := m.client.Stop(ctx, id, true); err != nil {
+		if err := m.client.Stop(ctx, created.ID, true); err != nil {
 			return err
 		}
 	}
-	item, err = m.client.Get(ctx, id)
+	item, err = m.client.Get(ctx, created.ID)
 	if errors.Is(err, provider.ErrNotFound) {
-		return nil
+		return m.verifyFailedCreateAbsence(ctx, created)
 	}
 	if err != nil {
+		return err
+	}
+	if err := m.verifyFailedCreateIdentity(item, created, poolID); err != nil {
 		return err
 	}
 	if !strings.EqualFold(item.State, "STOPPED") {
 		return provider.ErrActive
 	}
-	return m.client.Delete(ctx, id)
+	if err := m.client.Delete(ctx, created.ID); err != nil {
+		return err
+	}
+	return m.verifyFailedCreateAbsence(ctx, created)
+}
+
+// Both lookups are needed: an ID may disappear while an instance with the
+// original owned name remains. Neither read makes ID-only mutation atomic;
+// runtime qualification must prove exclusive control of the disposable target.
+func (m *Manager) verifyFailedCreateAbsence(ctx context.Context, created Container) error {
+	if _, err := m.client.Get(ctx, created.ID); err == nil {
+		return fmt.Errorf("container ID remains after failed-create cleanup: %w", provider.ErrManagedDrift)
+	} else if !errors.Is(err, provider.ErrNotFound) {
+		return fmt.Errorf("verify failed-create container ID absence: %w", err)
+	}
+	if _, err := m.client.GetByName(ctx, created.Name); err == nil {
+		return fmt.Errorf("container name remains after failed-create cleanup: %w", provider.ErrManagedDrift)
+	} else if !errors.Is(err, provider.ErrNotFound) {
+		return fmt.Errorf("verify failed-create container name absence: %w", err)
+	}
+	return nil
 }
 
 func (m *Manager) Get(ctx context.Context, providerID string) (provider.Instance, error) {
