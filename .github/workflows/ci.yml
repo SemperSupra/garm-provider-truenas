@@ -96,11 +96,27 @@ jobs:
               # rather than downloading ~215 MB for every ephemeral instance.
               # Check the exact version and minimum executable tree independently
               # of the existing verified-download fallback smoke below.
-              test -x /home/runner/run.sh
-              test -x /home/runner/bin/Runner.Listener
-              test -x /home/runner/externals/node24/bin/node
-              baked_version="$(/home/runner/bin/Runner.Listener --version)"
-              test "$baked_version" = "$GARM_TEST_RUNNER_VERSION"
+              if [ ! -x /home/runner/run.sh ]; then
+                echo 'PRESTAGED_RUNNER_MISSING:run.sh'
+                exit 1
+              fi
+              if [ ! -x /home/runner/bin/Runner.Listener ]; then
+                echo 'PRESTAGED_RUNNER_MISSING:bin/Runner.Listener'
+                exit 1
+              fi
+              if [ ! -x /home/runner/externals/node24/bin/node ]; then
+                echo 'PRESTAGED_RUNNER_MISSING:externals/node24/bin/node'
+                exit 1
+              fi
+              if ! baked_version="$(/home/runner/bin/Runner.Listener --version)"; then
+                echo 'PRESTAGED_RUNNER_VERSION_QUERY_FAILED'
+                exit 1
+              fi
+              if [ "$baked_version" != "$GARM_TEST_RUNNER_VERSION" ]; then
+                printf 'PRESTAGED_RUNNER_VERSION_MISMATCH expected=%s observed=%s\\n' "$GARM_TEST_RUNNER_VERSION" "$baked_version"
+                exit 1
+              fi
+              echo 'PRESTAGED_RUNNER_IDENTITY_PASS'
               mount | grep " /run/garm-jit " | grep -q noexec
               printf "#!/bin/sh\nexit 0\n" > /run/garm-jit/noexec-probe
               chmod 700 /run/garm-jit/noexec-probe
