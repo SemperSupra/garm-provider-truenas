@@ -108,10 +108,14 @@ jobs:
                 echo "PRESTAGED_RUNNER_MISSING:externals/node24/bin/node"
                 exit 1
               fi
-              if ! baked_version="$(/home/runner/bin/Runner.Listener --version)"; then
+              if ! version_output="$(/home/runner/bin/Runner.Listener --version 2>/dev/null)"; then
                 echo "PRESTAGED_RUNNER_VERSION_QUERY_FAILED"
                 exit 1
               fi
+              # Runner.Listener may emit diagnostic lines on stdout. Only an
+              # exact standalone dotted version is admissible, and duplicate
+              # version lines must not accidentally pass the equality check.
+              baked_version="$(printf "%s\\n" "$version_output" | grep -E "^[0-9]+[.][0-9]+[.][0-9]+$" || true)"
               if [ "$baked_version" != "$GARM_TEST_RUNNER_VERSION" ]; then
                 printf "PRESTAGED_RUNNER_VERSION_MISMATCH expected=%s observed=%s\\n" "$GARM_TEST_RUNNER_VERSION" "$baked_version"
                 exit 1
