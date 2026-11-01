@@ -97,26 +97,26 @@ jobs:
               # Check the exact version and minimum executable tree independently
               # of the existing verified-download fallback smoke below.
               if [ ! -x /home/runner/run.sh ]; then
-                echo 'PRESTAGED_RUNNER_MISSING:run.sh'
+                echo "PRESTAGED_RUNNER_MISSING:run.sh"
                 exit 1
               fi
               if [ ! -x /home/runner/bin/Runner.Listener ]; then
-                echo 'PRESTAGED_RUNNER_MISSING:bin/Runner.Listener'
+                echo "PRESTAGED_RUNNER_MISSING:bin/Runner.Listener"
                 exit 1
               fi
               if [ ! -x /home/runner/externals/node24/bin/node ]; then
-                echo 'PRESTAGED_RUNNER_MISSING:externals/node24/bin/node'
+                echo "PRESTAGED_RUNNER_MISSING:externals/node24/bin/node"
                 exit 1
               fi
               if ! baked_version="$(/home/runner/bin/Runner.Listener --version)"; then
-                echo 'PRESTAGED_RUNNER_VERSION_QUERY_FAILED'
+                echo "PRESTAGED_RUNNER_VERSION_QUERY_FAILED"
                 exit 1
               fi
               if [ "$baked_version" != "$GARM_TEST_RUNNER_VERSION" ]; then
-                printf 'PRESTAGED_RUNNER_VERSION_MISMATCH expected=%s observed=%s\\n' "$GARM_TEST_RUNNER_VERSION" "$baked_version"
+                printf "PRESTAGED_RUNNER_VERSION_MISMATCH expected=%s observed=%s\\n" "$GARM_TEST_RUNNER_VERSION" "$baked_version"
                 exit 1
               fi
-              echo 'PRESTAGED_RUNNER_IDENTITY_PASS'
+              echo "PRESTAGED_RUNNER_IDENTITY_PASS"
               mount | grep " /run/garm-jit " | grep -q noexec
               printf "#!/bin/sh\nexit 0\n" > /run/garm-jit/noexec-probe
               chmod 700 /run/garm-jit/noexec-probe
