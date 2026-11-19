@@ -22,6 +22,49 @@ type fakeClient struct {
 	nextID        int
 	preserveState bool
 	badDataset    bool
+	deleteNoop    bool
+}
+
+type createReadbackAdversary struct {
+	*fakeClient
+}
+
+func (c *createReadbackAdversary) Create(ctx context.Context, spec CreateSpec) (Container, error) {
+	item, err := c.fakeClient.Create(ctx, spec)
+	if err != nil {
+		return item, err
+	}
+	item.State = "RUNNING"
+	c.items[item.ID] = item
+	return item, nil
+}
+
+type cleanupAdversary struct {
+	*fakeClient
+	getCalls    int
+	mutateAt    int
+	stopCalls   int
+	deleteCalls int
+}
+
+func (c *cleanupAdversary) Get(ctx context.Context, id int) (Container, error) {
+	c.getCalls++
+	if c.getCalls == c.mutateAt {
+		item := c.items[id]
+		item.Description = `{"schema":"semper-supra.garm-container-owner/1","managed_by":"garm-provider-truenas","controller_id":"foreign-controller","pool_id":"pool-1","runner_name":"runner-1","profile":"truenas-container-linux-general"}`
+		c.items[id] = item
+	}
+	return c.fakeClient.Get(ctx, id)
+}
+
+func (c *cleanupAdversary) Stop(ctx context.Context, id int, force bool) error {
+	c.stopCalls++
+	return c.fakeClient.Stop(ctx, id, force)
+}
+
+func (c *cleanupAdversary) Delete(ctx context.Context, id int) error {
+	c.deleteCalls++
+	return c.fakeClient.Delete(ctx, id)
 }
 
 func newFakeClient() *fakeClient {
@@ -121,7 +164,12 @@ func (f *fakeClient) Stop(_ context.Context, id int, _ bool) error {
 	f.items[id] = item
 	return nil
 }
-func (f *fakeClient) Delete(_ context.Context, id int) error { delete(f.items, id); return nil }
+func (f *fakeClient) Delete(_ context.Context, id int) error {
+	if !f.deleteNoop {
+		delete(f.items, id)
+	}
+	return nil
+}
 
 func bootstrap() provider.Bootstrap {
 	return provider.Bootstrap{
@@ -197,6 +245,118 @@ func TestCreateRejectsUnexpectedRootDatasetAndCleansUp(t *testing.T) {
 	}
 }
 
+func TestFailedCreateCleanupRechecksIdentityBeforeMutation(t *testing.T) {
+	for _, tc := range []struct {
+		name      string
+		mutateAt  int
+		wantStops int
+	}{
+		{"before stop", 1, 0},
+		{"before delete", 2, 1},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			client := &cleanupAdversary{fakeClient: newFakeClient()}
+			manager, err := New(client, "controller-1", client.version)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if _, err := manager.Create(context.Background(), bootstrap()); err != nil {
+				t.Fatal(err)
+			}
+			created := client.items[1]
+			client.getCalls = 0
+			client.mutateAt = tc.mutateAt
+			if err := manager.cleanupFailedCreate(context.Background(), created, bootstrap().PoolID); !errors.Is(err, provider.ErrForeign) {
+				t.Fatalf("changed identity must preserve uncertain residue, got %v", err)
+			}
+			if client.stopCalls != tc.wantStops || client.deleteCalls != 0 {
+				t.Fatalf("unexpected destructive calls: stop=%d delete=%d", client.stopCalls, client.deleteCalls)
+			}
+			if _, ok := client.items[created.ID]; !ok {
+				t.Fatal("foreign replacement was deleted")
+			}
+		})
+	}
+}
+
+func TestCreateReportsUncertainCleanupResidue(t *testing.T) {
+	client := &cleanupAdversary{fakeClient: newFakeClient(), mutateAt: 2}
+	client.preserveState = true
+	manager, err := New(client, "controller-1", client.version)
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, err = manager.Create(context.Background(), bootstrap())
+	if !errors.Is(err, provider.ErrManagedDrift) || !errors.Is(err, provider.ErrForeign) {
+		t.Fatalf("create must report both primary drift and uncertain foreign cleanup: %v", err)
+	}
+	if client.stopCalls != 0 || client.deleteCalls != 0 {
+		t.Fatalf("uncertain container was mutated: stop=%d delete=%d", client.stopCalls, client.deleteCalls)
+	}
+	if _, ok := client.items[1]; !ok {
+		t.Fatal("uncertain residue was deleted")
+	}
+}
+
+func TestFailedCreateCleanupRequiresObservedFinalAbsence(t *testing.T) {
+	client := newFakeClient()
+	client.preserveState = true
+	client.deleteNoop = true
+	manager, err := New(client, "controller-1", client.version)
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, err = manager.Create(context.Background(), bootstrap())
+	if !errors.Is(err, provider.ErrManagedDrift) || !strings.Contains(err.Error(), "uncertain residue") {
+		t.Fatalf("delete acknowledgement without absence must report uncertainty: %v", err)
+	}
+	if _, ok := client.items[1]; !ok {
+		t.Fatal("fake retained container unexpectedly absent")
+	}
+
+	client.deleteNoop = false
+	if err := manager.cleanupFailedCreate(context.Background(), client.items[1], bootstrap().PoolID); err != nil {
+		t.Fatalf("actual deletion and final ID/name absence should pass: %v", err)
+	}
+}
+
+func TestFailedCreateCleanupDoesNotTrustIDAbsenceAlone(t *testing.T) {
+	client := newFakeClient()
+	manager, err := New(client, "controller-1", client.version)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := manager.Create(context.Background(), bootstrap()); err != nil {
+		t.Fatal(err)
+	}
+	created := client.items[1]
+	delete(client.items, 1)
+	renumbered := created
+	renumbered.ID = 2
+	client.items[2] = renumbered
+	if err := manager.cleanupFailedCreate(context.Background(), created, bootstrap().PoolID); !errors.Is(err, provider.ErrManagedDrift) {
+		t.Fatalf("owned name under new ID must remain uncertain, got %v", err)
+	}
+	if _, ok := client.items[2]; !ok {
+		t.Fatal("renumbered container was deleted")
+	}
+}
+
+func TestCreateEarlyUnsafeReadbackReportsPossibleResidue(t *testing.T) {
+	client := &createReadbackAdversary{fakeClient: newFakeClient()}
+	manager, err := New(client, "controller-1", client.version)
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, err = manager.Create(context.Background(), bootstrap())
+	if !errors.Is(err, provider.ErrManagedDrift) || !strings.Contains(err.Error(), "residue may remain") {
+		t.Fatalf("early post-create stop must report possible residue: %v", err)
+	}
+	if _, ok := client.items[1]; !ok {
+		t.Fatal("unproven active container was deleted")
+	}
+}
+
 func TestContainerRootfsProjectionMatchesExactBeta3Source(t *testing.T) {
 	got, err := containerRootfsMountpoint(
 		"tank/.truenas_containers/containers/garm_runner_1234",
@@ -205,10 +365,14 @@ func TestContainerRootfsProjectionMatchesExactBeta3Source(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if got != "/.truenas_containers/tank/containers/garm_runner_1234" {
+	if got != "/mnt/.truenas_containers/tank/containers/garm_runner_1234" {
 		t.Fatalf("unexpected source-derived mountpoint %q", got)
 	}
 	for _, dataset := range []string{
+		"./.truenas_containers/containers/garm_runner_1234",
+		"../.truenas_containers/containers/garm_runner_1234",
+		"/tank/.truenas_containers/containers/garm_runner_1234",
+		"tank/.truenas_containers/containers/garm_runner_1234/",
 		"tank/containers/garm_runner_1234",
 		"tank/.truenas_containers/foreign/garm_runner_1234",
 		"tank/.truenas_containers/containers/other",
