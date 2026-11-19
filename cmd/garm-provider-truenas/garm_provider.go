@@ -15,9 +15,11 @@ import (
 	executionv011 "github.com/cloudbase/garm-provider-common/execution/v0.1.1"
 	garmParams "github.com/cloudbase/garm-provider-common/params"
 
+	"github.com/SemperSupra/garm-provider-truenas/internal/containerbackend"
 	"github.com/SemperSupra/garm-provider-truenas/internal/mockstore"
 	"github.com/SemperSupra/garm-provider-truenas/internal/provider"
 	"github.com/SemperSupra/garm-provider-truenas/internal/truenasstore"
+	"github.com/SemperSupra/garm-provider-truenas/internal/vmbackend"
 )
 
 var (
@@ -59,12 +61,24 @@ type instanceManager interface {
 	RemoveAll(context.Context) error
 }
 
-var _ instanceManager = (*provider.Manager)(nil)
+var (
+	_ instanceManager = (*provider.Manager)(nil)
+	_ instanceManager = (*containerbackend.Manager)(nil)
+	_ instanceManager = (*vmbackend.Manager)(nil)
+)
 
 type externalProvider struct {
-	cfg          config
-	configPath   string
-	controllerID string
+	cfg            config
+	configPath     string
+	controllerID   string
+	managerFactory func(context.Context) (instanceManager, func() error, error)
+}
+
+func (p *externalProvider) backendName() string {
+	if p.cfg.TrueNAS != nil {
+		return normalizeTrueNASBackend(p.cfg.TrueNAS.Backend)
+	}
+	return trueNASBackendApps
 }
 
 func newExternalProvider(configPath, controllerID string) (*externalProvider, error) {
@@ -82,6 +96,9 @@ func newExternalProvider(configPath, controllerID string) (*externalProvider, er
 }
 
 func (p *externalProvider) manager(ctx context.Context) (instanceManager, func() error, error) {
+	if p.managerFactory != nil {
+		return p.managerFactory(ctx)
+	}
 	var backend provider.Client
 	var closeBackend func() error
 
@@ -125,7 +142,7 @@ func (p *externalProvider) manager(ctx context.Context) (instanceManager, func()
 }
 
 func (p *externalProvider) CreateInstance(ctx context.Context, bootstrap garmParams.BootstrapInstance) (garmParams.ProviderInstance, error) {
-	if err := validateBootstrapContract(bootstrap); err != nil {
+	if err := validateBootstrapContractForBackend(p.backendName(), bootstrap); err != nil {
 		return garmParams.ProviderInstance{}, badRequest(err)
 	}
 	manager, closeBackend, err := p.manager(ctx)
@@ -272,17 +289,40 @@ func (p *externalProvider) GetExtraSpecsJSONSchema(context.Context) (string, err
 }
 
 func validateBootstrapContract(bootstrap garmParams.BootstrapInstance) error {
+	return validateBootstrapContractForBackend(trueNASBackendApps, bootstrap)
+}
+
+func validateBootstrapContractForBackend(backend string, bootstrap garmParams.BootstrapInstance) error {
 	if bootstrap.OSType != garmParams.Linux {
 		return fmt.Errorf("os_type %q is unsupported", bootstrap.OSType)
 	}
 	if bootstrap.OSArch != garmParams.Amd64 {
 		return fmt.Errorf("arch %q is unsupported", bootstrap.OSArch)
 	}
-	if bootstrap.Flavor != provider.FlavorLinuxGeneral {
-		return fmt.Errorf("flavor %q is unsupported", bootstrap.Flavor)
-	}
-	if bootstrap.Image != provider.RunnerImage {
-		return fmt.Errorf("image %q is not the fixed TrueNAS runner image", bootstrap.Image)
+	switch backend {
+	case trueNASBackendApps:
+		if bootstrap.Flavor != provider.FlavorLinuxGeneral {
+			return fmt.Errorf("flavor %q is unsupported", bootstrap.Flavor)
+		}
+		if bootstrap.Image != provider.RunnerImage {
+			return fmt.Errorf("image %q is not the fixed TrueNAS runner image", bootstrap.Image)
+		}
+	case trueNASBackendContainer:
+		if bootstrap.Flavor != containerbackend.FlavorLinuxGeneral {
+			return fmt.Errorf("flavor %q is unsupported for container backend", bootstrap.Flavor)
+		}
+		if bootstrap.Image != containerbackend.ImageFamily {
+			return fmt.Errorf("image %q is not the fixed TrueNAS container image family", bootstrap.Image)
+		}
+	case trueNASBackendVM:
+		if bootstrap.Flavor != vmbackend.FlavorLinuxGeneral {
+			return fmt.Errorf("flavor %q is unsupported for vm backend", bootstrap.Flavor)
+		}
+		if bootstrap.Image != vmbackend.TemplateFamily {
+			return fmt.Errorf("image %q is not the fixed TrueNAS vm template family", bootstrap.Image)
+		}
+	default:
+		return fmt.Errorf("backend %q is unsupported", backend)
 	}
 	if err := validateRunnerToolContract(bootstrap); err != nil {
 		return err
