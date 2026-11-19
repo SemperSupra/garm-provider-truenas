@@ -203,7 +203,7 @@ func writePrestagedRunner(t *testing.T, home, version, tokenMarker string) {
 	t.Helper()
 	files := map[string]string{
 		"run.sh":                    fmt.Sprintf("#!/bin/bash\nprintf '%%s' \"${GARM_INSTANCE_TOKEN-unset}\" > %q\nsleep 0.2\n", tokenMarker),
-		"bin/Runner.Listener":       fmt.Sprintf("#!/bin/sh\nif [ \"${1:-}\" = \"--version\" ]; then printf '%s\\n'; fi\n", version),
+		"bin/Runner.Listener":       fmt.Sprintf("#!/bin/sh\nif [ \"${1:-}\" = \"--version\" ]; then printf 'synthetic runner diagnostic\\n%s\\n'; fi\n", version),
 		"externals/node24/bin/node": "#!/bin/sh\nexit 0\n",
 	}
 	for name, body := range files {

@@ -155,8 +155,12 @@ prestaged_runner_matches() {
   [ ! -e "$home/.runner" ] && [ ! -L "$home/.runner" ] || return 1
   [ ! -e "$home/.credentials" ] && [ ! -L "$home/.credentials" ] || return 1
   [ ! -e "$home/.credentials_rsaparams" ] && [ ! -L "$home/.credentials_rsaparams" ] || return 1
-  actual_version=$(env -u GARM_INSTANCE_TOKEN "$home/bin/Runner.Listener" --version 2>/dev/null | \
-    tr -d '\r' | sed -n '1p') || return 1
+  # The native runner may emit informational diagnostics before the version.
+  # Require the command itself to succeed and select only a standalone
+  # dotted version; multiple version lines cannot satisfy the exact equality.
+  version_output=$(env -u GARM_INSTANCE_TOKEN "$home/bin/Runner.Listener" --version 2>/dev/null) || return 1
+  actual_version=$(printf '%s\n' "$version_output" | tr -d '\r' | \
+    sed -n '/^[0-9][0-9]*\.[0-9][0-9]*\.[0-9][0-9]*$/p') || return 1
   [ "$actual_version" = "$expected_runner_version" ]
 }
 
