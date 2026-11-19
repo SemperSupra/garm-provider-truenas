@@ -30,15 +30,15 @@ var (
 // WorkloadRequest defines the expected public-safe one-job validation contract
 // before a single ephemeral runner executes on a dedicated controlled test repo.
 type WorkloadRequest struct {
-	RunNonce            string            `json:"run_nonce"`
-	Repository          string            `json:"repository"`
-	ExpectedRunnerName  string            `json:"expected_runner_name"`
-	ExpectedBackend     string            `json:"expected_backend"`
-	ExpectedTarget      string            `json:"expected_target"`
-	TriggerEvent        string            `json:"trigger_event"`
-	Permissions         map[string]string `json:"permissions"`
-	ExpectedAssertions  []string          `json:"expected_assertions"`
-	PrivateRepoAllowed  bool              `json:"private_repo_allowed"`
+	RunNonce           string            `json:"run_nonce"`
+	Repository         string            `json:"repository"`
+	ExpectedRunnerName string            `json:"expected_runner_name"`
+	ExpectedBackend    string            `json:"expected_backend"`
+	ExpectedTarget     string            `json:"expected_target"`
+	TriggerEvent       string            `json:"trigger_event"`
+	Permissions        map[string]string `json:"permissions"`
+	ExpectedAssertions []string          `json:"expected_assertions"`
+	PrivateRepoAllowed bool              `json:"private_repo_allowed"`
 }
 
 // Receipt captures independent host-side and GitHub-side evidence for one
