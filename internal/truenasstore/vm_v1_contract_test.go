@@ -80,7 +80,7 @@ func TestClassicVMV1SourceContractIsExplicitAndStillOpen(t *testing.T) {
 		if RuntimeCellOperationallyAdmitted(RuntimeBackendCell{
 			Status: cell.Status,
 			Driver: cell.Driver,
-		}) {
+		}, "14535745dc3aa3c0b5466da7c704bca4d23dcec5") {
 			t.Fatalf("%s vm-v1 must not be operationally admitted before runtime evidence", version)
 		}
 	}

@@ -39,15 +39,27 @@ func TestRuntimeBackendOperationalAdmissionIsReceiptDriven(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !RuntimeCellOperationallyAdmitted(apps) {
-		t.Fatal("accepted Apps G5 row should be operationally admitted")
+	const acceptedSource = "14535745dc3aa3c0b5466da7c704bca4d23dcec5"
+	if !RuntimeCellOperationallyAdmitted(apps, acceptedSource) {
+		t.Fatal("accepted Apps G5 row should admit its exact evidenced provider source")
+	}
+	if RuntimeCellOperationallyAdmitted(apps, "0cd28da1c8040c913f51027de348004d46cc7bfc") {
+		t.Fatal("historical Apps PASS must not admit the newer 2.337.0 provider source")
+	}
+	if RuntimeCellOperationallyAdmitted(apps, "") {
+		t.Fatal("unknown provider source must fail closed")
+	}
+	withoutEvidence := apps
+	withoutEvidence.Evidence = nil
+	if RuntimeCellOperationallyAdmitted(withoutEvidence, acceptedSource) {
+		t.Fatal("PASS without retained evidence must fail closed")
 	}
 
 	_, container, err := ResolveRuntimeBackend("container", "26.0.0-BETA.3")
 	if err != nil {
 		t.Fatal(err)
 	}
-	if RuntimeCellOperationallyAdmitted(container) {
+	if RuntimeCellOperationallyAdmitted(container, acceptedSource) {
 		t.Fatal("OPEN Container source contract must not become operational support")
 	}
 }

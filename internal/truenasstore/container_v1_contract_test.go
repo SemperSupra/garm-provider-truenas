@@ -71,7 +71,7 @@ func TestContainerV1DoesNotBorrowAppsAdmission(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if RuntimeCellOperationallyAdmitted(cell) {
+	if RuntimeCellOperationallyAdmitted(cell, "14535745dc3aa3c0b5466da7c704bca4d23dcec5") {
 		t.Fatal("source-complete container-v1 must not inherit Apps runtime admission")
 	}
 }

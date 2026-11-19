@@ -22,13 +22,22 @@ var ErrRuntimeBackendUnknown = errors.New("TrueNAS runtime backend is not in the
 var runtimeBackendMatrixJSON []byte
 
 type RuntimeBackendCell struct {
-	Status           string            `json:"status"`
-	Driver           string            `json:"driver"`
-	ControlSurface   string            `json:"control_surface"`
-	MiddlewareCommit string            `json:"middleware_commit"`
-	SourceBlobs      map[string]string `json:"source_blobs"`
-	RequiredMethods  []string          `json:"required_methods"`
-	Note             string            `json:"note,omitempty"`
+	Status           string                  `json:"status"`
+	Driver           string                  `json:"driver"`
+	ControlSurface   string                  `json:"control_surface"`
+	MiddlewareCommit string                  `json:"middleware_commit"`
+	SourceBlobs      map[string]string       `json:"source_blobs"`
+	RequiredMethods  []string                `json:"required_methods"`
+	Evidence         *RuntimeBackendEvidence `json:"evidence,omitempty"`
+	Note             string                  `json:"note,omitempty"`
+}
+
+type RuntimeBackendEvidence struct {
+	RunID           int64  `json:"run_id"`
+	ArtifactID      int64  `json:"artifact_id"`
+	Classification  string `json:"classification"`
+	OracleSatisfied bool   `json:"oracle_satisfied"`
+	ProviderSource  string `json:"provider_source"`
 }
 
 type RuntimeBackendEntry struct {
@@ -85,6 +94,14 @@ func ResolveRuntimeBackend(backend, systemVersion string) (RuntimeBackendEntry, 
 	return entry, cell, nil
 }
 
-func RuntimeCellOperationallyAdmitted(cell RuntimeBackendCell) bool {
-	return cell.Status == "PASS"
+// RuntimeCellOperationallyAdmitted requires evidence for the exact provider
+// source being considered. A historical PASS cannot admit a new binary.
+func RuntimeCellOperationallyAdmitted(cell RuntimeBackendCell, providerSource string) bool {
+	if cell.Status != "PASS" || providerSource == "" || cell.Evidence == nil {
+		return false
+	}
+	evidence := cell.Evidence
+	return evidence.ProviderSource == providerSource &&
+		evidence.Classification == "SUPPORTED" && evidence.OracleSatisfied &&
+		evidence.RunID > 0 && evidence.ArtifactID > 0
 }
