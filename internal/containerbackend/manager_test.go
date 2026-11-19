@@ -23,6 +23,7 @@ type fakeClient struct {
 	preserveState bool
 	badDataset    bool
 	deleteNoop    bool
+	deleteReindex bool
 }
 
 type createReadbackAdversary struct {
@@ -165,8 +166,15 @@ func (f *fakeClient) Stop(_ context.Context, id int, _ bool) error {
 	return nil
 }
 func (f *fakeClient) Delete(_ context.Context, id int) error {
-	if !f.deleteNoop {
-		delete(f.items, id)
+	if f.deleteNoop {
+		return nil
+	}
+	item, exists := f.items[id]
+	delete(f.items, id)
+	if f.deleteReindex && exists {
+		item.ID = f.nextID
+		f.items[item.ID] = item
+		f.nextID++
 	}
 	return nil
 }
@@ -464,5 +472,50 @@ func TestDeleteRequiresStoppedStateAndUnknownStateFailsClosed(t *testing.T) {
 	}
 	if _, err := manager.List(context.Background(), ""); !errors.Is(err, provider.ErrManagedDrift) {
 		t.Fatalf("unknown state should fail closed, got %v", err)
+	}
+}
+
+func TestDeleteRequiresObservedIDAndNameAbsence(t *testing.T) {
+	for _, tc := range []struct {
+		name          string
+		deleteNoop    bool
+		deleteReindex bool
+	}{
+		{name: "delete acknowledgement retains ID", deleteNoop: true},
+		{name: "delete acknowledgement reindexes owned name", deleteReindex: true},
+		{name: "actual deletion"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			client := newFakeClient()
+			manager, err := New(client, "controller-1", client.version)
+			if err != nil {
+				t.Fatal(err)
+			}
+			inst, err := manager.Create(context.Background(), bootstrap())
+			if err != nil {
+				t.Fatal(err)
+			}
+			if err := manager.Stop(context.Background(), inst.ProviderID); err != nil {
+				t.Fatal(err)
+			}
+			client.deleteNoop = tc.deleteNoop
+			client.deleteReindex = tc.deleteReindex
+			err = manager.Delete(context.Background(), inst.ProviderID)
+			if tc.deleteNoop || tc.deleteReindex {
+				if !errors.Is(err, provider.ErrManagedDrift) {
+					t.Fatalf("retained container must report uncertain residue, got %v", err)
+				}
+				if _, err := client.GetByName(context.Background(), inst.Name); err != nil {
+					t.Fatalf("owned name must remain for negative control: %v", err)
+				}
+				return
+			}
+			if err != nil {
+				t.Fatalf("complete deletion should pass: %v", err)
+			}
+			if _, err := client.GetByName(context.Background(), inst.Name); !errors.Is(err, provider.ErrNotFound) {
+				t.Fatalf("owned name must be absent after complete deletion, got %v", err)
+			}
+		})
 	}
 }
